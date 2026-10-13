@@ -1,15 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import Animated from "react-native-reanimated";
 
@@ -341,9 +334,6 @@ function Discover() {
               }))}
             />
           )}
-          <Text style={styles.muted}>
-            Share your own from its edit screen: "Share with everyone on PantryGo".
-          </Text>
         </>
       )}
     </View>

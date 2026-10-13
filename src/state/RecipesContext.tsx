@@ -213,7 +213,7 @@ export function RecipesProvider({ children }: { children: ReactNode }) {
   }
 
   // Cooking: take the chosen amounts out of the pantry. Goes through setQuantity,
-  // so each one is logged as "used" and counts on the Impact tab.
+  // so each one is logged as "used" and counts on the Insights tab.
   function takeOut(amounts: { itemId: string; amount: number }[]): Taken[] {
     const taken: Taken[] = [];
     for (const { itemId, amount } of amounts) {

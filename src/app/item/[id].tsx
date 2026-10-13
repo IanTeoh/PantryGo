@@ -8,11 +8,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ActivityList } from "@/components/ActivityList";
 import { ContainerGauge } from "@/components/ContainerGauge";
+import { LevelBar } from "@/components/LevelBar";
 import { CountableDots } from "@/components/CountableDots";
 import { FoodIcon } from "@/components/FoodIcon";
 import { PressableScale } from "@/components/PressableScale";
 import { StatusPill } from "@/components/StatusPill";
 import { useNutrition } from "@/state/NutritionContext";
+import { usePreferences } from "@/state/PreferencesContext";
 import { usePantry } from "@/state/PantryContext";
 import { useShopping } from "@/state/ShoppingContext";
 import { colors, fonts, radius, spacing } from "@/theme";
@@ -20,6 +22,7 @@ import { formatDate } from "@/utils/dates";
 import { success, tap, tick, warning } from "@/utils/haptics";
 import { estimateForItem } from "@/utils/foodMatch";
 import { formatKcal, nutritionFor } from "@/utils/nutrition";
+import { readItemView } from "@/utils/itemView";
 import { dragStepFor, formatAmount, quickSteps, roundAmount, snapTo } from "@/utils/units";
 
 // The file is called [id].tsx, so /item/8 opens this screen with id = "8".
@@ -38,7 +41,10 @@ export default function ItemDetailScreen() {
   // Also log the used amount as something you ate? (Only offered when calories are known.)
   const [ateIt, setAteIt] = useState(false);
   const { logFood } = useNutrition();
+  const { prefs } = usePreferences(); // "I ate this" only if you track calories
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Simple level bar, or the container drawing (Profile → Appearance)
+  const [view] = useState(readItemView);
   // The last snapped amount while dragging, so each new step gives one tick
   const lastStep = useRef<number | null>(null);
 
@@ -176,7 +182,9 @@ export default function ItemDetailScreen() {
         </View>
 
         {/* ---- How much is left ---- */}
-        <View style={[styles.gaugeCard, isCountable && styles.gaugeCardColumn]}>
+        <View
+          style={[styles.gaugeCard, (isCountable || view === "simple") && styles.gaugeCardColumn]}
+        >
           {isCountable ? (
             <>
               <View style={styles.amountBlock}>
@@ -194,6 +202,29 @@ export default function ItemDetailScreen() {
                 onSet={(n) => {
                   tap();
                   choose(n);
+                }}
+              />
+            </>
+          ) : view === "simple" ? (
+            // Simple view: the amount, and a bar you drag
+            <>
+              <View style={styles.amountBlock}>
+                <Text style={styles.bigAmount}>
+                  {formatAmount(amount, "").trim()}
+                  <Text style={styles.bigUnit}> {item.unit}</Text>
+                </Text>
+                <Text style={styles.subtle}>
+                  of {formatAmount(item.capacity, item.unit)} · {Math.round(fraction * 100)}% left
+                </Text>
+              </View>
+              <LevelBar
+                fraction={fraction}
+                color={fraction <= 0.15 ? colors.fillLow : colors.fill}
+                onDrag={onDrag}
+                onDragEnd={(f) => {
+                  lastStep.current = null;
+                  setDraft(null);
+                  choose(amountAt(f)); // not saved yet: the Save bar appears
                 }}
               />
             </>
@@ -316,7 +347,7 @@ export default function ItemDetailScreen() {
           style={[styles.saveBar, { paddingBottom: spacing.md + insets.bottom }]}
         >
           {/* "I ate this": also logs the calories of what you used */}
-          {eaten && (
+          {eaten && prefs.trackCalories && (
             <Pressable
               onPress={() => {
                 tap();

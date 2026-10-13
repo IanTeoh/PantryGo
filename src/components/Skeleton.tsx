@@ -91,7 +91,7 @@ export function SkeletonCards({ count = 4 }: { count?: number }) {
   );
 }
 
-// Big blocks, for pages made of cards (Impact)
+// Big blocks, for pages made of cards (Insights)
 export function SkeletonBlocks() {
   return (
     <View style={styles.blocks} accessibilityLabel="Loading">

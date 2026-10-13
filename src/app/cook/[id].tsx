@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { FoodIcon } from "@/components/FoodIcon";
@@ -10,6 +11,7 @@ import { PressableScale } from "@/components/PressableScale";
 import { RecipeCover } from "@/components/RecipeCover";
 import { useCommunity } from "@/state/CommunityContext";
 import { useNutrition } from "@/state/NutritionContext";
+import { usePreferences } from "@/state/PreferencesContext";
 import { usePantry } from "@/state/PantryContext";
 import { useRecipes, type Taken } from "@/state/RecipesContext";
 import { colors, fonts, radius, spacing } from "@/theme";
@@ -70,6 +72,7 @@ function CookForm({
   const { items } = usePantry();
   const { takeOut } = useRecipes();
   const { logFood, entries, goals } = useNutrition();
+  const { prefs } = usePreferences();
 
   // ---- 1. The pantry ----
   const ingredients = scaleIngredients(recipe.ingredients, serves / (recipe.servings ?? serves));
@@ -102,7 +105,7 @@ function CookForm({
   // ---- 2. What you ate ----
   const estimate = estimateRecipeNutrition(recipe.ingredients, recipe.servings);
   // Log it? On for "I ate this"; when cooking, on if you use the calorie tracker
-  const tracksCalories = goals.kcal !== null || entries.length > 0;
+  const tracksCalories = prefs.trackCalories && (goals.kcal !== null || entries.length > 0);
   const [logIt, setLogIt] = useState(eatOnly || tracksCalories);
   const [eaten, setEaten] = useState(1); // servings
   const fill = (n: number): NutritionText =>
@@ -353,60 +356,66 @@ function CookForm({
         </View>
       )}
 
-      {/* ---- 2. What you ate ---- */}
-      <View style={styles.section}>
-        {!eatOnly && (
-          <Pressable
-            onPress={() => {
-              tick();
-              setLogIt((v) => !v);
-            }}
-            style={styles.toggleRow}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: logIt }}
-          >
-            <Ionicons
-              name={logIt ? "checkbox" : "square-outline"}
-              size={22}
-              color={logIt ? colors.primary : colors.textSoft}
-            />
-            <Text style={styles.toggleText}>I ate some: add it to my calories</Text>
-          </Pressable>
-        )}
-        {eatOnly && <Text style={styles.sectionTitle}>How much did you have?</Text>}
-
-        {logIt && (
-          <Animated.View entering={FadeIn.duration(220)} style={styles.section}>
-            <View style={styles.servesRow}>
-              <Text style={styles.servesLabel}>Servings</Text>
-              <View style={styles.stepper}>
-                <Pressable onPress={() => changeEaten(-0.5)} hitSlop={8} style={styles.stepButton}>
-                  <Ionicons name="remove" size={20} color={colors.primary} />
-                </Pressable>
-                <Text style={styles.stepValue}>{niceQuantity(eaten)}</Text>
-                <Pressable onPress={() => changeEaten(0.5)} hitSlop={8} style={styles.stepButton}>
-                  <Ionicons name="add" size={20} color={colors.primary} />
-                </Pressable>
-              </View>
-            </View>
-            <NutritionFields
-              value={nutritionText}
-              onChange={(t) => {
-                setEdited(true);
-                setNutritionText(t);
+      {/* ---- 2. What you ate (only if you track calories) ---- */}
+      {(eatOnly || prefs.trackCalories) && (
+        <View style={styles.section}>
+          {!eatOnly && (
+            <Pressable
+              onPress={() => {
+                tick();
+                setLogIt((v) => !v);
               }}
-              basisLabel={`for ${niceQuantity(eaten)} ${eaten === 1 ? "serving" : "servings"}`}
-              invalid={!nutrition.ok}
-            />
-            <Text style={styles.hint}>
-              {estimate
-                ? `Estimated from the ingredients (about ${formatKcal(estimate.perServe.kcal)} kcal a serving). Change anything that looks off.`
-                : "We couldn't estimate this recipe from its ingredients. Enter the calories if you know them."}{" "}
-              Only you can see your calories.
-            </Text>
-          </Animated.View>
-        )}
-      </View>
+              style={styles.toggleRow}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: logIt }}
+            >
+              <Ionicons
+                name={logIt ? "checkbox" : "square-outline"}
+                size={22}
+                color={logIt ? colors.primary : colors.textSoft}
+              />
+              <Text style={styles.toggleText}>I ate some: add it to my calories</Text>
+            </Pressable>
+          )}
+          {eatOnly && <Text style={styles.sectionTitle}>How much did you have?</Text>}
+
+          {logIt && (
+            <Animated.View entering={FadeIn.duration(220)} style={styles.section}>
+              <View style={styles.servesRow}>
+                <Text style={styles.servesLabel}>Servings</Text>
+                <View style={styles.stepper}>
+                  <Pressable
+                    onPress={() => changeEaten(-0.5)}
+                    hitSlop={8}
+                    style={styles.stepButton}
+                  >
+                    <Ionicons name="remove" size={20} color={colors.primary} />
+                  </Pressable>
+                  <Text style={styles.stepValue}>{niceQuantity(eaten)}</Text>
+                  <Pressable onPress={() => changeEaten(0.5)} hitSlop={8} style={styles.stepButton}>
+                    <Ionicons name="add" size={20} color={colors.primary} />
+                  </Pressable>
+                </View>
+              </View>
+              <NutritionFields
+                value={nutritionText}
+                onChange={(t) => {
+                  setEdited(true);
+                  setNutritionText(t);
+                }}
+                basisLabel={`for ${niceQuantity(eaten)} ${eaten === 1 ? "serving" : "servings"}`}
+                invalid={!nutrition.ok}
+              />
+              <Text style={styles.hint}>
+                {estimate
+                  ? `Estimated from the ingredients (about ${formatKcal(estimate.perServe.kcal)} kcal a serving). Change anything that looks off.`
+                  : "We couldn't estimate this recipe from its ingredients. Enter the calories if you know them."}{" "}
+                Only you can see your calories.
+              </Text>
+            </Animated.View>
+          )}
+        </View>
+      )}
 
       <PressableScale
         onPress={finish}

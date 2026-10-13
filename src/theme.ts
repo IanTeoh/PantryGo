@@ -44,7 +44,7 @@ const light = {
   fill: "#9CC5A8",
   fillLow: "#E8B66B",
 
-  // Impact charts (checked for colour-blind readability)
+  // Insights charts (checked for colour-blind readability)
   chartUsed: "#4E9A63",
   chartWasted: "#C2410C",
 
@@ -98,8 +98,8 @@ type Palette = Record<keyof typeof light, string>;
 // ---------------------------------------------------------------------------
 // Which palette to use
 // ---------------------------------------------------------------------------
-// The choice from Account → Appearance: follow the phone, or always light / always dark.
-export type ThemeChoice = "system" | "light" | "dark";
+// The choice from Profile → Appearance. Light unless you pick dark.
+export type ThemeChoice = "light" | "dark";
 const THEME_KEY = "pantrygo.theme";
 
 // Read the saved choice *synchronously* (getItemSync, not await). This file runs before any
@@ -107,17 +107,17 @@ const THEME_KEY = "pantrygo.theme";
 function readChoice(): ThemeChoice {
   try {
     const saved = Storage.getItemSync(THEME_KEY);
-    return saved === "light" || saved === "dark" ? saved : "system";
+    return saved === "dark" ? "dark" : "light"; // (an old "system" choice becomes light)
   } catch {
-    return "system"; // storage unavailable: just follow the phone
+    return "light"; // storage unavailable
   }
 }
 
 export const themeChoice: ThemeChoice = readChoice();
 
-// Tell React Native too, so built-in things (keyboard, alerts, pickers) match the app.
-// "unspecified" = no override, follow the phone.
-Appearance.setColorScheme(themeChoice === "system" ? "unspecified" : themeChoice);
+// Tell React Native too, so built-in things (keyboard, alerts, pickers) match the app
+// rather than the phone's own setting.
+Appearance.setColorScheme(themeChoice);
 
 // Saves the choice for next launch. (Account reloads the app straight after, because every
 // StyleSheet was built with the old colours when its file first loaded.)
@@ -125,12 +125,11 @@ export function saveThemeChoice(choice: ThemeChoice) {
   try {
     Storage.setItemSync(THEME_KEY, choice);
   } catch {
-    // couldn't save (rare): the app just keeps following the phone
+    // couldn't save (rare): the app stays light
   }
 }
 
-export const isDark =
-  themeChoice === "system" ? Appearance.getColorScheme() === "dark" : themeChoice === "dark";
+export const isDark = themeChoice === "dark";
 export const colors: Palette = isDark ? dark : light;
 
 // ---------------------------------------------------------------------------
@@ -179,3 +178,19 @@ export const tints: Record<keyof typeof lightTints, Tint> = isDark ? darkTints :
 export const heroGradient: [string, string] = isDark
   ? ["#1C3A2E", "#2A5443"]
   : ["#174D3A", "#2E8A5F"];
+
+// ---------------------------------------------------------------------------
+// Macro colours, the same everywhere: protein coral, carbs honey, fat sky.
+// `onHero` = brighter versions for the dark green cards.
+// ---------------------------------------------------------------------------
+export const macroColors = {
+  protein: tints.coral.icon,
+  carbs: tints.honey.icon,
+  fat: tints.sky.icon,
+} as const;
+export const macroColorsOnHero = { protein: "#FFB49E", carbs: "#F5D27A", fat: "#9CCBEA" } as const;
+export const macroSoft = {
+  protein: tints.coral.bg,
+  carbs: tints.honey.bg,
+  fat: tints.sky.bg,
+} as const;

@@ -1,15 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import { COVER_KEYS, RecipeCover } from "@/components/RecipeCover";
 import { pickPhoto, uploadPhoto, type PickedPhoto } from "@/lib/photos";
@@ -18,7 +11,17 @@ import { useCommunity } from "@/state/CommunityContext";
 import { useRecipes } from "@/state/RecipesContext";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { tick, warning } from "@/utils/haptics";
-import { CUISINES, DIFFICULTIES, TAGS } from "@/utils/recipeMeta";
+import {
+  CUISINES,
+  DIFFICULTIES,
+  MAX_CUISINE_LENGTH,
+  MAX_CUSTOM_TAGS,
+  MAX_TAG_LENGTH,
+  TAGS,
+  cleanTag,
+  isBuiltInCuisine,
+  isBuiltInTag,
+} from "@/utils/recipeMeta";
 import {
   formatIngredient,
   parseIngredientLine,
@@ -59,6 +62,15 @@ function RecipeForm({ existing }: { existing?: Recipe }) {
   const [tags, setTags] = useState<string[]>(existing?.tags ?? []);
   const [cover, setCover] = useState<CoverKey>(existing?.cover ?? "sage");
   const [cuisine, setCuisine] = useState<string | null>(existing?.cuisine ?? null);
+  // "Other" cuisine: one you type yourself
+  const startCustomCuisine =
+    existing?.cuisine && !isBuiltInCuisine(existing.cuisine) ? existing.cuisine : "";
+  const [otherCuisine, setOtherCuisine] = useState(startCustomCuisine !== "");
+  const [cuisineText, setCuisineText] = useState(startCustomCuisine);
+  // Your own tags: typed in one at a time
+  const [tagText, setTagText] = useState("");
+  const [addingTag, setAddingTag] = useState(false);
+  const customTags = tags.filter((t) => !isBuiltInTag(t));
   const [share, setShare] = useState(existing?.publishedId != null);
   // The photo: the saved one (a path), a newly picked one (not uploaded yet), or none
   const [photo, setPhoto] = useState<string | null>(existing?.photo ?? null);
@@ -83,6 +95,16 @@ function RecipeForm({ existing }: { existing?: Recipe }) {
   const servings = Number(servingsText);
   const minutes = Number(minutesText);
   const canSave = title.trim().length > 0 && (!share || ingredients.length > 0) && !saving;
+
+  function addTag() {
+    const t = cleanTag(tagText);
+    if (t && !tags.some((x) => x.toLowerCase() === t.toLowerCase())) {
+      tick();
+      setTags((prev) => [...prev, t]);
+    }
+    setTagText("");
+    setAddingTag(false);
+  }
 
   async function choosePhoto(from: "camera" | "library") {
     setPhotoError(null);
@@ -123,7 +145,9 @@ function RecipeForm({ existing }: { existing?: Recipe }) {
       difficulty,
       tags,
       cover,
-      cuisine,
+      cuisine: otherCuisine
+        ? cuisineText.trim().replace(/\s+/g, " ").slice(0, MAX_CUISINE_LENGTH) || null
+        : cuisine,
       photo: photoPath,
       sourceUrl: sourceUrl.trim() || null,
       ingredients,
@@ -275,12 +299,28 @@ function RecipeForm({ existing }: { existing?: Recipe }) {
             <Chip
               key={c.value}
               label={c.label}
-              on={cuisine === c.value}
+              on={!otherCuisine && cuisine === c.value}
               // Tap the selected one again to clear it
-              onPress={() => setCuisine(cuisine === c.value ? null : c.value)}
+              onPress={() => {
+                setOtherCuisine(false);
+                setCuisine(cuisine === c.value && !otherCuisine ? null : c.value);
+              }}
             />
           ))}
+          <Chip label="Other…" on={otherCuisine} onPress={() => setOtherCuisine((v) => !v)} />
         </View>
+        {otherCuisine && (
+          <TextInput
+            value={cuisineText}
+            onChangeText={setCuisineText}
+            placeholder="e.g. Malaysian"
+            placeholderTextColor={colors.textSoft}
+            style={styles.input}
+            maxLength={MAX_CUISINE_LENGTH}
+            autoCapitalize="words"
+            autoFocus={cuisineText === ""}
+          />
+        )}
       </Field>
 
       <Field label="Tags">
@@ -297,7 +337,37 @@ function RecipeForm({ existing }: { existing?: Recipe }) {
               }
             />
           ))}
+          {/* Your own tags: tap one to remove it */}
+          {customTags.map((t) => (
+            <Chip
+              key={`own-${t}`}
+              label={`${t}  ✕`}
+              on
+              onPress={() => setTags((prev) => prev.filter((x) => x !== t))}
+            />
+          ))}
+          {customTags.length < MAX_CUSTOM_TAGS && !addingTag && (
+            <Chip label="+ Your own" on={false} onPress={() => setAddingTag(true)} />
+          )}
         </View>
+        {addingTag && (
+          <View style={styles.tagRow}>
+            <TextInput
+              value={tagText}
+              onChangeText={setTagText}
+              placeholder="e.g. Mum's, meal prep"
+              placeholderTextColor={colors.textSoft}
+              style={[styles.input, { flex: 1 }]}
+              maxLength={MAX_TAG_LENGTH}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={addTag}
+            />
+            <Pressable onPress={addTag} style={styles.tagAdd} hitSlop={6}>
+              <Text style={styles.tagAddText}>{tagText.trim() ? "Add" : "Cancel"}</Text>
+            </Pressable>
+          </View>
+        )}
       </Field>
 
       <Field label="Ingredients, one per line">
@@ -311,8 +381,7 @@ function RecipeForm({ existing }: { existing?: Recipe }) {
           textAlignVertical="top"
         />
         <Text style={styles.hint}>
-          Start with the amount and unit ("200 g", "2 tbsp", "3") so "Cooked this" can take the
-          right amount out of your pantry.{" "}
+          Amount first, like "200 g rice".{" "}
           {ingredients.length > 0 ? `${ingredients.length} ingredients.` : ""}
         </Text>
       </Field>
@@ -443,6 +512,14 @@ const styles = StyleSheet.create({
   coverPreview: { borderRadius: radius.lg, overflow: "hidden" },
   swatches: { flexDirection: "row", gap: spacing.sm },
   photoButtons: { flexDirection: "row", gap: spacing.sm },
+  tagRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  tagAdd: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  tagAddText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.primary },
   photoButton: {
     flexDirection: "row",
     alignItems: "center",

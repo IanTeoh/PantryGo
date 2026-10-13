@@ -9,6 +9,8 @@ import { roundAmount } from "@/utils/units";
 // ---------------------------------------------------------------------------
 
 // ---- Tags: a fixed list, so filtering works across everyone's recipes ----
+// You can add up to MAX_CUSTOM_TAGS of your own too ("Mum's", "meal prep"). They show
+// on the recipe, but Discover's filters stick to this list.
 export const TAGS: { value: string; label: string }[] = [
   { value: "quick", label: "Quick" },
   { value: "vegetarian", label: "Vegetarian" },
@@ -23,7 +25,21 @@ export const TAGS: { value: string; label: string }[] = [
 ];
 
 export function tagLabel(value: string): string {
-  return TAGS.find((t) => t.value === value)?.label ?? value;
+  return TAGS.find((t) => t.value === value)?.label ?? value; // your own tags show as typed
+}
+
+export const MAX_CUSTOM_TAGS = 3;
+export const MAX_TAG_LENGTH = 20;
+export const isBuiltInTag = (value: string) => TAGS.some((t) => t.value === value);
+
+// Tidies a typed tag: trims, squashes spaces, cuts to length. A built-in tag typed by
+// hand ("quick") becomes the built-in one. "" if there's nothing left.
+export function cleanTag(typed: string): string {
+  const t = typed.trim().replace(/\s+/g, " ").slice(0, MAX_TAG_LENGTH);
+  const builtIn = TAGS.find(
+    (x) => x.label.toLowerCase() === t.toLowerCase() || x.value === t.toLowerCase(),
+  );
+  return builtIn ? builtIn.value : t;
 }
 
 // ---- Cuisines: what kind of food a recipe is, for "recipes you'll like" ----
@@ -42,9 +58,14 @@ export const CUISINES: { value: string; label: string; art: FoodArtName }[] = [
   { value: "american", label: "American", art: "hamburger" },
 ];
 
+// A cuisine's name. Ones people typed themselves ("Malaysian") show as typed.
 export function cuisineLabel(value: string | null): string | null {
-  return CUISINES.find((c) => c.value === value)?.label ?? null;
+  if (!value) return null;
+  return CUISINES.find((c) => c.value === value)?.label ?? value;
 }
+
+export const isBuiltInCuisine = (value: string | null) => CUISINES.some((c) => c.value === value);
+export const MAX_CUISINE_LENGTH = 30;
 
 // How you eat, from your preferences
 export type Diet = "any" | "vegetarian" | "vegan";

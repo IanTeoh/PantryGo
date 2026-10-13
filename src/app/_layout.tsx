@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+import { SetNewPassword } from "@/components/SetNewPassword";
 import { AuthProvider, useAuth } from "@/state/AuthContext";
 import { BudgetProvider } from "@/state/BudgetContext";
 import { CommunityProvider } from "@/state/CommunityContext";
@@ -83,7 +84,7 @@ export default function RootLayout() {
 
 // A separate component, because it needs useAuth(), which only works *inside* <AuthProvider>.
 function RootNavigator() {
-  const { session, loading: authLoading } = useAuth();
+  const { session, loading: authLoading, recovering } = useAuth();
   const { household, loading: householdLoading } = useHousehold();
   const { prefs, loading: prefsLoading } = usePreferences();
 
@@ -99,6 +100,12 @@ function RootNavigator() {
       SplashScreen.hideAsync();
     }
   }, [loading]);
+
+  // Opened from a password-reset email: choose a new password before anything else
+  if (recovering) {
+    SplashScreen.hideAsync();
+    return <SetNewPassword />;
+  }
 
   if (loading) {
     return null; // splash screen is still showing
@@ -129,9 +136,20 @@ function RootNavigator() {
           options={{ presentation: "modal", title: "Edit item" }}
         />
         <Stack.Screen name="spending" options={{ title: "Spending", headerBackTitle: "Back" }} />
+        <Stack.Screen
+          name="insights-details"
+          options={{ title: "Food", headerBackTitle: "Insights" }}
+        />
         <Stack.Screen name="recipe/[id]" options={{ title: "", headerBackTitle: "Back" }} />
         <Stack.Screen name="recipe-edit" options={{ presentation: "modal", title: "Recipe" }} />
         <Stack.Screen name="community/[id]" options={{ title: "", headerBackTitle: "Back" }} />
+        {/* One pantry shelf: slides in from the right (the normal push animation) */}
+        <Stack.Screen name="shelf/[key]" options={{ title: "", headerBackTitle: "Pantry" }} />
+        <Stack.Screen
+          name="activity/index"
+          options={{ title: "All activity", headerBackTitle: "Home" }}
+        />
+        <Stack.Screen name="activity/[id]" options={{ presentation: "modal", title: "Change" }} />
         <Stack.Screen name="cook/[id]" options={{ presentation: "modal", title: "Cooked it" }} />
         <Stack.Screen name="account" options={{ presentation: "modal", title: "Profile" }} />
         <Stack.Screen name="legal/[doc]" options={{ title: "", headerBackTitle: "Back" }} />

@@ -14,9 +14,10 @@ export type Preferences = {
   cuisines: string[]; // e.g. ["italian", "indian"]
   diet: Diet;
   onboarded: boolean; // finished (or skipped) the setup flow
+  trackCalories: boolean; // the calorie tracker is an extra you switch on
 };
 
-const EMPTY: Preferences = { cuisines: [], diet: "any", onboarded: false };
+const EMPTY: Preferences = { cuisines: [], diet: "any", onboarded: false, trackCalories: false };
 
 type PreferencesContextValue = {
   prefs: Preferences;
@@ -27,7 +28,12 @@ type PreferencesContextValue = {
 
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 
-type PrefsRow = { cuisines: string[] | null; diet: Diet | null; onboarded_at: string | null };
+type PrefsRow = {
+  cuisines: string[] | null;
+  diet: Diet | null;
+  onboarded_at: string | null;
+  track_calories?: boolean | null; // (missing until 18_extras.sql has been run)
+};
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
@@ -43,22 +49,33 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       return;
     }
     (async () => {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("user_preferences")
-        .select("cuisines, diet, onboarded_at")
+        .select("cuisines, diet, onboarded_at, track_calories")
         .eq("user_id", userId)
         .maybeSingle();
+      let oldSchema = false;
+      if (error?.message.includes("track_calories")) {
+        // 18_extras.sql not run yet: read the rest, and keep calories on like before
+        oldSchema = true;
+        ({ data, error } = await supabase
+          .from("user_preferences")
+          .select("cuisines, diet, onboarded_at")
+          .eq("user_id", userId)
+          .maybeSingle());
+      }
       if (error) {
         // Most likely 13_preferences.sql hasn't been run yet. Don't trap anyone in
         // the setup flow over it: carry on as if it's done.
         console.warn("Couldn't load preferences:", error.message);
-        setPrefs({ ...EMPTY, onboarded: true });
+        setPrefs({ ...EMPTY, onboarded: true, trackCalories: true });
       } else {
         const row = data as PrefsRow | null;
         setPrefs({
           cuisines: row?.cuisines ?? [],
           diet: row?.diet ?? "any",
           onboarded: !!row?.onboarded_at,
+          trackCalories: oldSchema ? true : !!row?.track_calories,
         });
       }
       setLoadedFor(userId);
@@ -76,7 +93,9 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 
   async function savePrefs(patch: Partial<Omit<Preferences, "onboarded">>) {
     setPrefs((p) => ({ ...p, ...patch })); // show it straight away
-    return write(patch);
+    // App names → column names
+    const { trackCalories, ...rest } = patch;
+    return write(trackCalories === undefined ? rest : { ...rest, track_calories: trackCalories });
   }
 
   async function finishOnboarding() {

@@ -1,8 +1,11 @@
+import type { Aisle } from "@/utils/aisles";
+
 export type Location = "pantry" | "fridge" | "freezer";
 
 // What shape to draw on the item's detail screen.
 // "countable" = things you count (eggs, cans) instead of pour or scoop.
-export type ContainerType = "bottle" | "carton" | "jar" | "bag" | "box" | "countable";
+export type ContainerType =
+  "bottle" | "carton" | "jar" | "bag" | "box" | "can" | "tub" | "packet" | "countable";
 
 export type Item = {
   id: string;
@@ -15,6 +18,9 @@ export type Item = {
   expiry: string | null; // "2026-10-12", or null if none
   barcode?: string | null; // the barcode it was scanned from, if any ("?" = optional)
   nutrition?: Nutrition | null; // calories etc., if known (see utils/nutrition.ts)
+  // Its type (Spices & herbs, Meat…) if someone picked one. null = worked out from the
+  // name (see typeOf in utils/aisles.ts)
+  category?: Aisle | null;
 };
 
 // Nutrition for a pantry item. Per 100 g / 100 ml for things you weigh or pour,

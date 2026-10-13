@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import { ExpiryPicker } from "@/components/ExpiryPicker";
 import { EstimateBanner } from "@/components/EstimateBanner";
@@ -16,6 +17,7 @@ import {
   parseNutrition,
   type NutritionText,
 } from "@/utils/nutrition";
+import { AISLES, aisleFor, aisleLabel, type Aisle } from "@/utils/aisles";
 import { CONTAINER_OPTIONS, formatAmount } from "@/utils/units";
 
 // /edit-item/8 → edit item 8. Opened from the Edit button on an item's page.
@@ -39,7 +41,7 @@ export default function EditItemScreen() {
 // The form is its own component so its useState calls can start from the item's
 // current values. (useState only uses its starting value the first time.)
 function EditForm({ item }: { item: Item }) {
-  const { updateItem, setItemNutrition } = usePantry();
+  const { updateItem, setItemNutrition, setItemCategory } = usePantry();
 
   // ---- Fields, starting from the item as it is now ----
   const [name, setName] = useState(item.name);
@@ -49,6 +51,8 @@ function EditForm({ item }: { item: Item }) {
   const [location, setLocation] = useState<Location>(item.location);
   // "YYYY-MM-DD", or null for no date
   const [expiry, setExpiry] = useState<string | null>(item.expiry);
+  // Its type: "auto" = worked out from the name, or one you pick
+  const [type, setType] = useState<"auto" | Aisle>(item.category ?? "auto");
   const startNutrition = nutritionToText(item.nutrition);
   const [nutritionText, setNutritionText] = useState<NutritionText>(startNutrition);
 
@@ -65,6 +69,8 @@ function EditForm({ item }: { item: Item }) {
     if (!canSave) return;
     updateItem(item.id, { name: trimmedName, unit, container, location, expiry, capacity });
     if (nutritionChanged && nutrition.ok) setItemNutrition(item.id, nutrition.value);
+    const category = type === "auto" ? null : type;
+    if (category !== (item.category ?? null)) setItemCategory(item.id, category);
     router.back();
   }
 
@@ -110,6 +116,16 @@ function EditForm({ item }: { item: Item }) {
       <Text style={[styles.label, styles.padded]}>Where does it live?</Text>
       <FilterChips options={LOCATION_OPTIONS} selected={location} onSelect={setLocation} />
 
+      <Text style={[styles.label, styles.padded]}>Type</Text>
+      <FilterChips
+        options={[
+          { value: "auto" as const, label: `Automatic (${aisleLabel(aisleFor(name))})` },
+          ...AISLES.map((a) => ({ value: a.key, label: a.label })),
+        ]}
+        selected={type}
+        onSelect={setType}
+      />
+
       <Text style={[styles.label, styles.padded]}>Use by</Text>
       <ExpiryPicker value={expiry} onChange={setExpiry} />
 
@@ -130,8 +146,7 @@ function EditForm({ item }: { item: Item }) {
       />
 
       <Text style={[styles.hint, styles.padded, styles.note]}>
-        To change how much is left ({formatAmount(item.quantity, item.unit)}), use the item's page,
-        so it's recorded in the history.
+        Change how much is left on the item's page.
       </Text>
 
       <Pressable

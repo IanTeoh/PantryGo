@@ -2,15 +2,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import type { ComponentProps } from "react";
 import { useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import { FilterChips } from "@/components/FilterChips";
@@ -49,7 +42,10 @@ const SOURCES: Record<
   settlement: { icon: "swap-horizontal", label: "Paid back", tint: "plum" },
 };
 
-// Opened from the Impact tab: what everyone's spent, what's owed between you and
+// Each housemate gets their own colour (the same one everywhere on this page)
+const PERSON_TINTS: (keyof typeof tints)[] = ["mint", "sky", "honey", "plum", "coral"];
+
+// Opened from the Insights tab: what everyone's spent, what's owed between you and
 // each person (and why), and every cost in one log.
 export default function SpendingScreen() {
   const { session } = useAuth();
@@ -108,6 +104,11 @@ export default function SpendingScreen() {
     0,
   );
 
+  const settled = Math.abs(net) < 0.005;
+  const currentMonthLabel = new Date().toLocaleDateString("en-NZ", { month: "long" });
+  const toneOf = (id: string | null) =>
+    PERSON_TINTS[Math.max(0, memberIds.indexOf(id ?? "")) % PERSON_TINTS.length];
+
   const nameOf = (id: string | null) =>
     id === me ? "You" : (members.find((m) => m.userId === id)?.name ?? "Someone");
   const firstName = (id: string | null) => nameOf(id).split(" ")[0];
@@ -154,21 +155,52 @@ export default function SpendingScreen() {
       {/* ---- Your balance ---- */}
       <View style={styles.hero}>
         <Gradient />
-        <Text style={styles.heroEyebrow}>YOUR BALANCE</Text>
-        <Text style={styles.heroNumber}>
-          {Math.abs(net) < 0.005 ? "All square" : formatMoney(Math.abs(net))}
-        </Text>
+        <View style={styles.heroTop}>
+          <Text style={styles.heroEyebrow}>YOUR BALANCE</Text>
+          <View
+            style={[
+              styles.heroPill,
+              settled ? styles.heroPillSquare : net > 0 ? styles.heroPillOwed : styles.heroPillOwe,
+            ]}
+          >
+            <Ionicons
+              name={settled ? "checkmark-circle" : net > 0 ? "arrow-down" : "arrow-up"}
+              size={13}
+              color={settled ? colors.onHero : net > 0 ? "#0F3D2B" : "#5A1A0C"}
+            />
+            <Text
+              style={[
+                styles.heroPillText,
+                { color: settled ? colors.onHero : net > 0 ? "#0F3D2B" : "#5A1A0C" },
+              ]}
+            >
+              {settled ? "All square" : net > 0 ? "You're owed" : "You owe"}
+            </Text>
+          </View>
+        </View>
+        <Text style={styles.heroNumber}>{settled ? "$0.00" : formatMoney(Math.abs(net))}</Text>
         <Text style={styles.heroCaption}>
-          {Math.abs(net) < 0.005
+          {settled
             ? "Nobody owes anybody anything."
-            : net > 0
-              ? "You're owed, overall"
-              : "You owe, overall"}
+            : "Overall, after everything you've each paid for"}
         </Text>
-        <View style={styles.heroStats}>
-          <HeroStat label="Owed to you" value={formatMoney(owedToMe)} />
-          <HeroStat label="You owe" value={formatMoney(iOwe)} />
-          <HeroStat label="Your share this month" value={formatMoney(myMonthShare)} />
+        {(owedToMe > 0.005 || iOwe > 0.005) && (
+          <Text style={styles.heroLine}>
+            Owed to you {formatMoney(owedToMe)} · You owe {formatMoney(iOwe)}
+          </Text>
+        )}
+      </View>
+
+      {/* ---- This month: just the totals ---- */}
+      <View style={styles.monthCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>{currentMonthLabel.toUpperCase()}</Text>
+          <Text style={styles.monthTotal}>{formatMoney(monthTotal)}</Text>
+          <Text style={styles.muted}>spent by the household</Text>
+        </View>
+        <View style={styles.shareBox}>
+          <Text style={styles.shareValue}>{formatMoney(myMonthShare)}</Text>
+          <Text style={styles.muted}>your share</Text>
         </View>
       </View>
 
@@ -195,26 +227,29 @@ export default function SpendingScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ expanded: isOpen }}
                   >
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>
+                    <View style={[styles.avatar, { backgroundColor: tints[toneOf(p.userId)].bg }]}>
+                      <Text style={[styles.avatarText, { color: tints[toneOf(p.userId)].icon }]}>
                         {nameOf(p.userId).charAt(0).toUpperCase()}
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.personName}>{nameOf(p.userId)}</Text>
-                      <Text
-                        style={[
-                          styles.personStatus,
-                          !square && (theyOwe ? styles.owedText : styles.oweText),
-                        ]}
-                      >
-                        {square
-                          ? "All square"
-                          : theyOwe
-                            ? `Owes you ${formatMoney(p.amount)}`
-                            : `You owe ${formatMoney(-p.amount)}`}
+                      <Text style={styles.personStatus}>
+                        {square ? "All square" : theyOwe ? "Owes you" : "You owe them"}
                       </Text>
                     </View>
+                    {!square && (
+                      <View style={[styles.amountPill, theyOwe ? styles.pillOwed : styles.pillOwe]}>
+                        <Text
+                          style={[
+                            styles.amountPillText,
+                            theyOwe ? styles.owedText : styles.oweText,
+                          ]}
+                        >
+                          {formatMoney(Math.abs(p.amount))}
+                        </Text>
+                      </View>
+                    )}
                     <Ionicons
                       name={isOpen ? "chevron-up" : "chevron-down"}
                       size={18}
@@ -254,9 +289,6 @@ export default function SpendingScreen() {
                       {items.length > 12 && (
                         <Text style={styles.muted}>and {items.length - 12} older ones</Text>
                       )}
-                      <Text style={styles.muted}>
-                        + adds to what {firstName(p.userId)} owes you; − adds to what you owe.
-                      </Text>
 
                       {!square && (
                         <PressableScale
@@ -290,10 +322,6 @@ export default function SpendingScreen() {
               );
             })}
           </View>
-          <Text style={styles.muted}>
-            Tap someone to see why. Shared costs are split equally between everyone in the
-            household.
-          </Text>
         </View>
       )}
 
@@ -311,7 +339,7 @@ export default function SpendingScreen() {
         />
       ) : (
         <PressableScale scaleTo={0.97} onPress={() => setAdding(true)} style={styles.addCostButton}>
-          <Ionicons name="add" size={20} color={colors.primary} />
+          <Ionicons name="add-circle" size={20} color={colors.onPrimary} />
           <Text style={styles.addCostText}>Add a cost</Text>
         </PressableScale>
       )}
@@ -337,16 +365,14 @@ export default function SpendingScreen() {
 
         {months.length === 0 ? (
           <Text style={styles.muted}>
-            {expenses.length === 0
-              ? "No costs yet. They come from receipt totals when you put shopping away, prices when you add an item, or Add a cost above."
-              : "Nothing here with this filter."}
+            {expenses.length === 0 ? "No costs yet." : "Nothing here with this filter."}
           </Text>
         ) : (
           months.map((m) => (
             <View key={m.key} style={styles.monthBlock}>
               <View style={styles.monthHeader}>
                 <Text style={styles.label}>{m.label.toUpperCase()}</Text>
-                <Text style={styles.muted}>{formatMoney(totalSpent(m.rows))} spent</Text>
+                <Text style={styles.muted}>{formatMoney(totalSpent(m.rows))}</Text>
               </View>
               <View style={styles.card}>
                 {m.rows.map((e, i) => (
@@ -371,17 +397,6 @@ export default function SpendingScreen() {
         )}
       </View>
     </ScrollView>
-  );
-}
-
-function HeroStat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.heroStat}>
-      <Text style={styles.heroStatValue} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-      </Text>
-      <Text style={styles.heroStatLabel}>{label}</Text>
-    </View>
   );
 }
 
@@ -421,25 +436,28 @@ function LogRow({
       <View style={[styles.sourceIcon, { backgroundColor: tint.bg }]}>
         <Ionicons name={source.icon} size={18} color={tint.icon} />
       </View>
-      <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flex: 1, gap: 3 }}>
         <Text style={styles.logTitle} numberOfLines={1}>
           {title}
         </Text>
         <Text style={styles.logMeta} numberOfLines={2}>
           {who} · {date}
         </Text>
-        <Text style={styles.logMeta}>
-          {source.label}
-          {e.kind === "purchase" &&
-            (!e.shared
+        {e.kind === "purchase" && (
+          <Text style={styles.logMeta} numberOfLines={1}>
+            {source.label}
+            {!e.shared
               ? " · personal"
               : share > 0
-                ? ` · split ${splitCount} ways · your share ${formatMoney(share)}`
-                : ` · split ${splitCount} ways · not including you`)}
-        </Text>
+                ? ` · your share ${formatMoney(share)}`
+                : ` · split ${splitCount} ways, not you`}
+          </Text>
+        )}
       </View>
       <View style={styles.logRight}>
-        <Text style={styles.logAmount}>{formatMoney(e.amount)}</Text>
+        <Text style={[styles.logAmount, e.kind === "settlement" && { color: tints.plum.icon }]}>
+          {formatMoney(e.amount)}
+        </Text>
         {e.createdBy === me && (
           <Pressable
             onPress={() => (confirm ? onDelete() : setConfirm(true))}
@@ -561,18 +579,45 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: colors.onHeroSoft,
   },
-  heroNumber: { fontFamily: fonts.heading, fontSize: 40, lineHeight: 46, color: colors.onHero },
-  heroCaption: { fontFamily: fonts.body, fontSize: 14, color: colors.onHeroSoft },
-  heroStats: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
-  heroStat: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: radius.md,
-    padding: spacing.sm + 2,
-    gap: 2,
+  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  heroPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
   },
-  heroStatValue: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.onHero },
-  heroStatLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.onHeroSoft },
+  heroPillOwed: { backgroundColor: "#A8E6C1" },
+  heroPillOwe: { backgroundColor: "#FFB49E" },
+  heroPillSquare: { backgroundColor: "rgba(255,255,255,0.16)" },
+  heroPillText: { fontFamily: fonts.bodyBold, fontSize: 12 },
+  heroNumber: {
+    fontFamily: fonts.heading,
+    fontSize: 44,
+    lineHeight: 50,
+    color: colors.onHero,
+    marginTop: spacing.xs,
+  },
+  heroCaption: { fontFamily: fonts.body, fontSize: 14, color: colors.onHeroSoft },
+
+  // This month
+  heroLine: {
+    fontFamily: fonts.bodySemi,
+    fontSize: 13,
+    color: colors.onHeroSoft,
+    marginTop: spacing.sm,
+  },
+  monthCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+  },
+  shareBox: { alignItems: "flex-end" },
+  monthTotal: { fontFamily: fonts.heading, fontSize: 26, color: colors.text, marginTop: 2 },
+  shareValue: { fontFamily: fonts.heading, fontSize: 20, color: colors.text },
 
   // Between you and…
   personRow: {
@@ -592,6 +637,10 @@ const styles = StyleSheet.create({
   avatarText: { fontFamily: fonts.heading, fontSize: 17, color: colors.primary },
   personName: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.text },
   personStatus: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.textSoft, marginTop: 1 },
+  amountPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill },
+  pillOwed: { backgroundColor: tints.mint.bg },
+  pillOwe: { backgroundColor: tints.coral.bg },
+  amountPillText: { fontFamily: fonts.bodyBold, fontSize: 14, fontVariant: ["tabular-nums"] },
   owedText: { color: colors.fresh },
   oweText: { color: colors.urgent },
   breakdown: {
@@ -622,11 +671,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primary,
     borderRadius: radius.pill,
     paddingVertical: spacing.md + 2,
   },
-  addCostText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.primary },
+  addCostText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.onPrimary },
   addCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -664,7 +713,7 @@ const styles = StyleSheet.create({
   // Log
   logHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   monthBlock: { gap: spacing.sm, marginTop: spacing.xs },
-  monthHeader: { flexDirection: "row", justifyContent: "space-between" },
+  monthHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   logRow: {
     flexDirection: "row",
     alignItems: "flex-start",

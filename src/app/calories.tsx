@@ -16,14 +16,14 @@ import Animated from "react-native-reanimated";
 import { CalorieGauge } from "@/components/CalorieGauge";
 import { Gradient } from "@/components/Gradient";
 import { entriesOn, lastDays, useNutrition, type FoodEntry } from "@/state/NutritionContext";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, macroColorsOnHero, radius, spacing } from "@/theme";
 import { addDays, formatDate, fromIsoDate, toIsoDate } from "@/utils/dates";
 import { tap, warning } from "@/utils/haptics";
 import { rowEntering, rowExiting, rowLayout } from "@/utils/motion";
 import { formatGrams, formatKcal, progress, sumMacros } from "@/utils/nutrition";
 import { formatAmount } from "@/utils/units";
 
-// Opened from the calorie cards on Home and Impact. /calories?day=2026-10-09 opens that day.
+// Opened from the calorie cards on Home and Insights. /calories?day=2026-10-09 opens that day.
 export default function CaloriesScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
   const { entries, goals, refresh, deleteEntry } = useNutrition();
@@ -37,7 +37,7 @@ export default function CaloriesScreen() {
   const dayEntries = entriesOn(entries, day);
   const totals = sumMacros(dayEntries);
   const isToday = day === today;
-  const week = lastDays(7).map((d) => ({ day: d, kcal: sumMacros(entriesOn(entries, d)).kcal }));
+  const week = lastDays(7).map((d) => ({ day: d, ...sumMacros(entriesOn(entries, d)) }));
   const weekTop = Math.max(...week.map((w) => w.kcal), goals.kcal ?? 0, 1);
 
   function moveDay(by: number) {
@@ -138,9 +138,19 @@ export default function CaloriesScreen() {
         )}
 
         <View style={styles.macros}>
-          <Macro label="Protein" value={totals.protein} goal={goals.protein} />
-          <Macro label="Carbs" value={totals.carbs} goal={goals.carbs} />
-          <Macro label="Fat" value={totals.fat} goal={goals.fat} />
+          <Macro
+            label="Protein"
+            value={totals.protein}
+            goal={goals.protein}
+            color={macroColorsOnHero.protein}
+          />
+          <Macro
+            label="Carbs"
+            value={totals.carbs}
+            goal={goals.carbs}
+            color={macroColorsOnHero.carbs}
+          />
+          <Macro label="Fat" value={totals.fat} goal={goals.fat} color={macroColorsOnHero.fat} />
         </View>
       </View>
 
@@ -157,10 +167,7 @@ export default function CaloriesScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{isToday ? "Eaten today" : "Eaten"}</Text>
         {dayEntries.length === 0 ? (
-          <Text style={styles.muted}>
-            Nothing logged{isToday ? " yet" : ""}. Add food here, or tick "I ate this" when you use
-            something on an item's page.
-          </Text>
+          <Text style={styles.muted}>Nothing logged{isToday ? " yet" : ""}.</Text>
         ) : (
           dayEntries.map((e, i) => (
             <Animated.View
@@ -232,27 +239,38 @@ export default function CaloriesScreen() {
             </Pressable>
           ))}
         </View>
-        <Text style={styles.muted}>
-          Tap a day to see it.{goals.kcal !== null ? " The line is your goal." : ""}
-        </Text>
+        {goals.kcal !== null && <Text style={styles.muted}>The dashed line is your goal.</Text>}
       </View>
     </ScrollView>
   );
 }
 
 // One macro under the big number: "Protein 45 g / 120 g" with a thin bar if there's a goal
-function Macro({ label, value, goal }: { label: string; value: number; goal: number | null }) {
+function Macro({
+  label,
+  value,
+  goal,
+  color,
+}: {
+  label: string;
+  value: number;
+  goal: number | null;
+  color: string;
+}) {
   const p = progress(value, goal);
   return (
     <View style={styles.macro}>
-      <Text style={styles.macroLabel}>{label}</Text>
+      <View style={styles.macroHead}>
+        <View style={[styles.macroDot, { backgroundColor: color }]} />
+        <Text style={styles.macroLabel}>{label}</Text>
+      </View>
       <Text style={styles.macroValue}>
         {formatGrams(value)}
         {goal ? <Text style={styles.macroGoal}> / {formatGrams(goal)}</Text> : null}
       </Text>
       {p !== null && (
         <View style={styles.macroTrack}>
-          <View style={[styles.macroFill, { width: `${p * 100}%` }]} />
+          <View style={[styles.macroFill, { width: `${p * 100}%`, backgroundColor: color }]} />
         </View>
       )}
     </View>
@@ -299,6 +317,8 @@ const styles = StyleSheet.create({
     padding: spacing.sm + 2,
     gap: 4,
   },
+  macroHead: { flexDirection: "row", alignItems: "center", gap: 5 },
+  macroDot: { width: 8, height: 8, borderRadius: 4 },
   macroLabel: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.onHeroSoft },
   macroValue: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.onHero },
   macroGoal: { fontFamily: fonts.body, fontSize: 12, color: colors.onHeroSoft },

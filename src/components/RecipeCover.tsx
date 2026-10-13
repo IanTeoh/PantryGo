@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { FoodArt, artForName } from "@/components/FoodIcon";
@@ -65,8 +66,11 @@ export function RecipeCover({
 }) {
   const { bg, fg } = coverColours(cover);
   const url = photoUrl(photo);
+  // If the photo can't load (offline the first time, or the file's missing),
+  // fall back to the drawing rather than leaving a blank colour.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  if (url) {
+  if (url && url !== failedUrl) {
     return (
       // The colour shows while the photo loads, then it fades in
       <View style={[styles.wrap, { height, backgroundColor: bg, borderRadius: radius }]}>
@@ -77,6 +81,7 @@ export function RecipeCover({
           transition={250}
           cachePolicy="memory-disk"
           accessibilityIgnoresInvertColors
+          onError={() => setFailedUrl(url)}
         />
       </View>
     );

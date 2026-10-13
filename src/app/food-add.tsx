@@ -1,13 +1,14 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import { FilterChips } from "@/components/FilterChips";
 import { FoodIcon } from "@/components/FoodIcon";
 import { NutritionFields } from "@/components/NutritionFields";
 import type { CommonFood } from "@/data/commonFoods";
-import { useNutrition, type FoodEntry } from "@/state/NutritionContext";
+import { useNutrition, type FoodEntry, type SavedFood } from "@/state/NutritionContext";
 import { usePantry } from "@/state/PantryContext";
 import { colors, fonts, radius, spacing } from "@/theme";
 import type { Item } from "@/types";
@@ -39,7 +40,7 @@ export default function FoodAddScreen() {
   const day = params.day ?? toIsoDate(new Date());
   const isToday = day === toIsoDate(new Date());
 
-  const [mode, setMode] = useState<"pantry" | "other">("pantry");
+  const [mode, setMode] = useState<"pantry" | "other" | "saved">("pantry");
 
   return (
     <ScrollView
@@ -53,12 +54,19 @@ export default function FoodAddScreen() {
         options={[
           { value: "pantry", label: "From the pantry" },
           { value: "other", label: "Other food" },
+          { value: "saved", label: "My foods" },
         ]}
         selected={mode}
         onSelect={setMode}
       />
       {/* Two different forms. `key` isn't needed: each is its own component with its own state. */}
-      {mode === "pantry" ? <FromPantry day={day} isToday={isToday} /> : <OtherFood day={day} />}
+      {mode === "pantry" ? (
+        <FromPantry day={day} isToday={isToday} />
+      ) : mode === "other" ? (
+        <OtherFood day={day} />
+      ) : (
+        <MyFoods day={day} />
+      )}
     </ScrollView>
   );
 }
@@ -289,7 +297,8 @@ function FromPantry({ day, isToday }: { day: string; isToday: boolean }) {
 // Other food: anything not from the pantry (takeaway, lunch at uni…)
 // ---------------------------------------------------------------------------
 function OtherFood({ day }: { day: string }) {
-  const { logFood, entries } = useNutrition();
+  const { logFood, entries, saveFood } = useNutrition();
+  const [alsoSave, setAlsoSave] = useState(false); // also keep it in My foods
   const [name, setName] = useState("");
   const [nutritionText, setNutritionText] = useState<NutritionText>(EMPTY_NUTRITION_TEXT);
   // A common food picked from the suggestions, and how much of it (g or ml)
@@ -367,6 +376,17 @@ function OtherFood({ day }: { day: string }) {
       fat: n.fat ?? 0,
       itemId: null,
     });
+    if (alsoSave) {
+      // Saved as one serving of what you just had
+      saveFood({
+        name: name.trim(),
+        serving: food && amountOk ? `${amount} ${food.basis}` : null,
+        kcal: n.kcal,
+        protein: n.protein ?? 0,
+        carbs: n.carbs ?? 0,
+        fat: n.fat ?? 0,
+      });
+    }
     router.back();
   }
 
@@ -486,6 +506,22 @@ function OtherFood({ day }: { day: string }) {
           : "Start typing for suggestions, or enter the numbers yourself. Only calories are needed."}
       </Text>
       <Pressable
+        onPress={() => {
+          tap();
+          setAlsoSave((v) => !v);
+        }}
+        style={[styles.toggleRow, styles.paddedMargin]}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: alsoSave }}
+      >
+        <Ionicons
+          name={alsoSave ? "checkbox" : "square-outline"}
+          size={22}
+          color={alsoSave ? colors.primary : colors.textSoft}
+        />
+        <Text style={styles.toggleText}>Save to My foods, to log it in one tap next time</Text>
+      </Pressable>
+      <Pressable
         onPress={log}
         disabled={!canLog}
         style={({ pressed }) => [
@@ -495,6 +531,226 @@ function OtherFood({ day }: { day: string }) {
         ]}
       >
         <Text style={styles.saveText}>Log it</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// My foods: things you eat often (your breakfast shake, a Subway sandwich…),
+// saved with their calories. Tap one, choose how many, log it.
+// ---------------------------------------------------------------------------
+function MyFoods({ day }: { day: string }) {
+  const { savedFoods, logSavedFood, deleteSavedFood, saveFood } = useNutrition();
+  const [openId, setOpenId] = useState<string | null>(null); // the one being logged
+  const [servings, setServings] = useState(1);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  function choose(f: SavedFood) {
+    tap();
+    setConfirmDelete(null);
+    setServings(1);
+    setOpenId(openId === f.id ? null : f.id);
+  }
+
+  function log(f: SavedFood) {
+    success();
+    logSavedFood(f, servings, day);
+    router.back();
+  }
+
+  function remove(f: SavedFood) {
+    if (confirmDelete !== f.id) {
+      setConfirmDelete(f.id); // first tap: ask
+      return;
+    }
+    tap();
+    setConfirmDelete(null);
+    deleteSavedFood(f.id);
+  }
+
+  if (adding) {
+    return (
+      <NewSavedFood
+        onCancel={() => setAdding(false)}
+        onSave={async (food) => {
+          const err = await saveFood(food);
+          if (!err) setAdding(false);
+          return err;
+        }}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.section}>
+      {savedFoods.length === 0 ? (
+        <View style={[styles.result, styles.paddedMargin, { gap: spacing.sm }]}>
+          <Text style={styles.choiceName}>Nothing saved yet</Text>
+          <Text style={styles.hint}>
+            Save things you eat often, like your breakfast shake, and log them in one tap.
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.list, styles.paddedMargin]}>
+          {savedFoods.map((f, i) => {
+            const isOpen = openId === f.id;
+            return (
+              <View key={f.id} style={i > 0 && styles.divider}>
+                <Pressable
+                  onPress={() => choose(f)}
+                  style={({ pressed }) => [styles.choice, pressed && { opacity: 0.6 }]}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: isOpen }}
+                >
+                  <Ionicons name="star" size={18} color={colors.soon} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.choiceName}>{f.name}</Text>
+                    <Text style={styles.hint}>
+                      {f.serving ? `${f.serving} · ` : ""}P {formatGrams(f.protein)} · C{" "}
+                      {formatGrams(f.carbs)} · F {formatGrams(f.fat)}
+                    </Text>
+                  </View>
+                  <Text style={styles.choiceKcal}>{formatKcal(f.kcal)} kcal</Text>
+                </Pressable>
+                {isOpen && (
+                  <View style={styles.savedOpen}>
+                    <View style={styles.amountRow}>
+                      <Text style={[styles.label, { marginTop: 0, flex: 1 }]}>Servings</Text>
+                      <Pressable
+                        onPress={() => setServings((v) => Math.max(0.5, v - 0.5))}
+                        style={styles.stepButton}
+                        hitSlop={6}
+                        accessibilityLabel="Fewer servings"
+                      >
+                        <Ionicons name="remove" size={18} color={colors.primary} />
+                      </Pressable>
+                      <Text style={styles.stepValue}>{servings}</Text>
+                      <Pressable
+                        onPress={() => setServings((v) => Math.min(20, v + 0.5))}
+                        style={styles.stepButton}
+                        hitSlop={6}
+                        accessibilityLabel="More servings"
+                      >
+                        <Ionicons name="add" size={18} color={colors.primary} />
+                      </Pressable>
+                    </View>
+                    <Pressable
+                      onPress={() => log(f)}
+                      style={({ pressed }) => [
+                        styles.saveButton,
+                        styles.savedLog,
+                        pressed && { opacity: 0.8 },
+                      ]}
+                    >
+                      <Text style={styles.saveText}>
+                        Log {formatKcal(Math.round(f.kcal * servings))} kcal
+                      </Text>
+                    </Pressable>
+                    <Pressable onPress={() => remove(f)} hitSlop={6} style={styles.savedDelete}>
+                      <Text style={[styles.link, { color: colors.urgent }]}>
+                        {confirmDelete === f.id
+                          ? "Tap again to remove it from My foods"
+                          : "Remove from My foods"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+      <Pressable
+        onPress={() => setAdding(true)}
+        style={({ pressed }) => [styles.addSaved, styles.paddedMargin, pressed && { opacity: 0.7 }]}
+      >
+        <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+        <Text style={styles.link}>New saved food</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// Adding a saved food by hand: a name, an optional serving, and its calories
+function NewSavedFood({
+  onCancel,
+  onSave,
+}: {
+  onCancel: () => void;
+  onSave: (food: Omit<SavedFood, "id" | "lastUsedAt">) => Promise<string | null>;
+}) {
+  const [name, setName] = useState("");
+  const [serving, setServing] = useState("");
+  const [nutritionText, setNutritionText] = useState<NutritionText>(EMPTY_NUTRITION_TEXT);
+  const [error, setError] = useState<string | null>(null);
+  const parsed = parseNutrition(nutritionText);
+  const n = parsed.ok ? parsed.value : null;
+  const canSave = name.trim().length > 0 && n !== null;
+
+  async function save() {
+    if (!n || !canSave) return;
+    const err = await onSave({
+      name: name.trim(),
+      serving: serving.trim() || null,
+      kcal: n.kcal,
+      protein: n.protein ?? 0,
+      carbs: n.carbs ?? 0,
+      fat: n.fat ?? 0,
+    });
+    if (err) setError(err);
+    else success();
+  }
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.field}>
+        <Text style={styles.label}>Name</Text>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. My breakfast shake"
+          placeholderTextColor={colors.textSoft}
+          style={styles.input}
+          autoCapitalize="sentences"
+          maxLength={80}
+          autoFocus
+        />
+      </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>One serving is… (optional)</Text>
+        <TextInput
+          value={serving}
+          onChangeText={setServing}
+          placeholder="e.g. 1 glass, 6-inch sub"
+          placeholderTextColor={colors.textSoft}
+          style={styles.input}
+          maxLength={40}
+        />
+      </View>
+      <Text style={[styles.label, styles.padded]}>Nutrition for one serving</Text>
+      <NutritionFields
+        value={nutritionText}
+        onChange={setNutritionText}
+        basisLabel="per serving"
+        invalid={!parsed.ok}
+      />
+      <Text style={[styles.hint, styles.padded]}>Only calories are needed.</Text>
+      {error && <Text style={[styles.error, styles.padded]}>{error}</Text>}
+      <Pressable
+        onPress={save}
+        disabled={!canSave}
+        style={({ pressed }) => [
+          styles.saveButton,
+          !canSave && { opacity: 0.4 },
+          pressed && { opacity: 0.8 },
+        ]}
+      >
+        <Text style={styles.saveText}>Save to My foods</Text>
+      </Pressable>
+      <Pressable onPress={onCancel} style={styles.cancel} hitSlop={8}>
+        <Text style={styles.hint}>Cancel</Text>
       </Pressable>
     </View>
   );
@@ -585,4 +841,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveText: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.onPrimary },
+  error: { fontFamily: fonts.body, fontSize: 13, color: colors.urgent },
+  cancel: { alignSelf: "center", padding: spacing.sm },
+  savedOpen: { paddingBottom: spacing.md, gap: spacing.md },
+  savedLog: { marginHorizontal: 0, marginTop: 0 },
+  savedDelete: { alignSelf: "center" },
+  addSaved: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  stepButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepValue: {
+    minWidth: 32,
+    textAlign: "center",
+    fontFamily: fonts.bodyBold,
+    fontSize: 16,
+    color: colors.text,
+  },
 });

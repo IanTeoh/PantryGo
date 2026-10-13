@@ -8,6 +8,7 @@ import { useAuth } from "@/state/AuthContext";
 import { useCommunity } from "@/state/CommunityContext";
 import { useHousehold } from "@/state/HouseholdContext";
 import { useRecipes } from "@/state/RecipesContext";
+import { usePreferences } from "@/state/PreferencesContext";
 import { colors, fonts, spacing } from "@/theme";
 import { warning } from "@/utils/haptics";
 
@@ -18,6 +19,7 @@ export default function RecipeScreen() {
   const community = useCommunity();
   const { members } = useHousehold();
   const { session } = useAuth();
+  const { prefs } = usePreferences();
 
   const [confirm, setConfirm] = useState<"delete" | null>(null);
 
@@ -87,15 +89,17 @@ export default function RecipeScreen() {
               <Ionicons name="flame" size={20} color={colors.onPrimary} />
               <Text style={b.primaryText}>Cooked this</Text>
             </Pressable>
-            <Pressable
-              onPress={() =>
-                router.push({ pathname: "/cook/[id]", params: { id: recipe.id, mode: "eat" } })
-              }
-              style={({ pressed }) => [b.soft, pressed && { opacity: 0.85 }]}
-            >
-              <Ionicons name="restaurant-outline" size={18} color={colors.primary} />
-              <Text style={b.softText}>I ate this (add to calories)</Text>
-            </Pressable>
+            {prefs.trackCalories && (
+              <Pressable
+                onPress={() =>
+                  router.push({ pathname: "/cook/[id]", params: { id: recipe.id, mode: "eat" } })
+                }
+                style={({ pressed }) => [b.soft, pressed && { opacity: 0.85 }]}
+              >
+                <Ionicons name="restaurant-outline" size={18} color={colors.primary} />
+                <Text style={b.softText}>I ate this (add to calories)</Text>
+              </Pressable>
+            )}
             <Text style={styles.muted}>
               "Cooked this" lets you choose how much comes out of the pantry.
             </Text>

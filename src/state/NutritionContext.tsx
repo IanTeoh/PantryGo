@@ -40,6 +40,14 @@ const NO_GOALS: Goals = { kcal: null, protein: null, carbs: null, fat: null };
 // What a screen passes to log something (the id, time and owner are filled in for it)
 export type NewFoodEntry = Omit<FoodEntry, "id" | "at" | "day"> & { day?: string };
 
+// Something you eat often, saved with its calories so it's one tap to log ("My foods")
+export type SavedFood = Macros & {
+  id: string;
+  name: string; // "Breakfast shake"
+  serving: string | null; // "1 glass"
+  lastUsedAt: number;
+};
+
 type NutritionContextValue = {
   entries: FoodEntry[]; // newest first
   goals: Goals;
@@ -48,6 +56,11 @@ type NutritionContextValue = {
   logFood: (entry: NewFoodEntry) => void;
   deleteEntry: (id: string) => void;
   saveGoals: (goals: Goals) => void;
+  savedFoods: SavedFood[]; // most recently used first
+  saveFood: (food: Omit<SavedFood, "id" | "lastUsedAt">) => Promise<string | null>; // error or null
+  deleteSavedFood: (id: string) => void;
+  // Log `servings` of a saved food today (or on `day`)
+  logSavedFood: (food: SavedFood, servings: number, day?: string) => void;
 };
 
 const NutritionContext = createContext<NutritionContextValue | null>(null);
@@ -76,6 +89,30 @@ type GoalsRow = {
 
 const num = (v: number | string | null) => (v === null ? null : Number(v));
 
+type SavedFoodRow = {
+  id: string;
+  name: string;
+  serving: string | null;
+  kcal: number | string;
+  protein: number | string | null;
+  carbs: number | string | null;
+  fat: number | string | null;
+  last_used_at: string;
+};
+
+function toSavedFood(row: SavedFoodRow): SavedFood {
+  return {
+    id: row.id,
+    name: row.name,
+    serving: row.serving,
+    kcal: Number(row.kcal),
+    protein: num(row.protein) ?? 0,
+    carbs: num(row.carbs) ?? 0,
+    fat: num(row.fat) ?? 0,
+    lastUsedAt: Date.parse(row.last_used_at),
+  };
+}
+
 function toEntry(row: FoodRow): FoodEntry {
   return {
     id: row.id,
@@ -98,6 +135,7 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
 
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [goals, setGoals] = useState<Goals>(NO_GOALS);
+  const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
   async function load(forUser: string) {
@@ -112,6 +150,17 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       supabase.from("nutrition_goals").select("*").eq("user_id", forUser).maybeSingle(),
     ]);
     if (isSaving()) return; // newer changes are on their way; a reload follows them
+
+    // Saved foods on their own: if 17_undo_and_saved_foods.sql hasn't been run yet,
+    // the rest of the tracker still works
+    supabase
+      .from("saved_foods")
+      .select("*")
+      .eq("user_id", forUser)
+      .order("last_used_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!error) setSavedFoods((data as SavedFoodRow[]).map(toSavedFood));
+      });
 
     if (logResult.error || goalsResult.error) {
       console.warn(
@@ -135,6 +184,7 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       // Signed out: forget the last person's log straight away
       setEntries([]);
       setGoals(NO_GOALS);
+      setSavedFoods([]);
       setLoadedFor(null);
       return;
     }
@@ -192,6 +242,63 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  // ---- Saved foods ----
+  async function saveFood(food: Omit<SavedFood, "id" | "lastUsedAt">) {
+    if (!userId) return "You're not signed in.";
+    const { data, error } = await supabase
+      .from("saved_foods")
+      .insert({
+        name: food.name.trim(),
+        serving: food.serving?.trim() || null,
+        kcal: food.kcal,
+        protein: food.protein,
+        carbs: food.carbs,
+        fat: food.fat,
+      })
+      .select("*")
+      .single();
+    if (error) {
+      return error.message.includes("saved_foods")
+        ? "Saved foods aren't set up yet. Run supabase/17_undo_and_saved_foods.sql in Supabase."
+        : error.message;
+    }
+    setSavedFoods((prev) => [toSavedFood(data as SavedFoodRow), ...prev]);
+    return null;
+  }
+
+  function deleteSavedFood(id: string) {
+    save(
+      () => setSavedFoods((prev) => prev.filter((f) => f.id !== id)),
+      () => supabase.from("saved_foods").delete().eq("id", id),
+    );
+  }
+
+  function logSavedFood(food: SavedFood, servings: number, day?: string) {
+    const r = (n: number) => Math.round(n * servings * 10) / 10;
+    logFood({
+      day,
+      name: food.name,
+      amount: servings,
+      unit: servings === 1 ? "serving" : "servings",
+      kcal: r(food.kcal),
+      protein: r(food.protein),
+      carbs: r(food.carbs),
+      fat: r(food.fat),
+      itemId: null,
+    });
+    // Move it to the top of the list (most recently used first)
+    const now = new Date();
+    setSavedFoods((prev) => [
+      { ...food, lastUsedAt: now.getTime() },
+      ...prev.filter((f) => f.id !== food.id),
+    ]);
+    supabase
+      .from("saved_foods")
+      .update({ last_used_at: now.toISOString() })
+      .eq("id", food.id)
+      .then(() => {});
+  }
+
   const value: NutritionContextValue = {
     entries,
     goals,
@@ -200,6 +307,10 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     logFood,
     deleteEntry,
     saveGoals,
+    savedFoods,
+    saveFood,
+    deleteSavedFood,
+    logSavedFood,
   };
 
   return <NutritionContext.Provider value={value}>{children}</NutritionContext.Provider>;

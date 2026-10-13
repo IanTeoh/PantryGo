@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import { colors, fonts, isDark, radius, spacing } from "@/theme";
 import { addDays, formatDate, fromIsoDate, relativeDays, toIsoDate } from "@/utils/dates";

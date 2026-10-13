@@ -8,6 +8,7 @@ import { RecipeView, recipeButtonStyles as b } from "@/components/RecipeView";
 import { useAuth } from "@/state/AuthContext";
 import { useCommunity } from "@/state/CommunityContext";
 import { useRecipes } from "@/state/RecipesContext";
+import { usePreferences } from "@/state/PreferencesContext";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { success } from "@/utils/haptics";
 
@@ -24,6 +25,7 @@ export default function CommunityRecipeScreen() {
   const community = useCommunity();
   const { recipes: mine } = useRecipes();
   const { session } = useAuth();
+  const { prefs } = usePreferences();
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,18 +134,20 @@ export default function CommunityRecipeScreen() {
                 <Text style={b.primaryText}>Save to my recipes</Text>
               </Pressable>
             )}
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/cook/[id]",
-                  params: { id: recipe.id, mode: "eat", from: "community" },
-                })
-              }
-              style={({ pressed }) => [b.soft, pressed && { opacity: 0.85 }]}
-            >
-              <Ionicons name="restaurant-outline" size={18} color={colors.primary} />
-              <Text style={b.softText}>I ate this (add to calories)</Text>
-            </Pressable>
+            {prefs.trackCalories && (
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: "/cook/[id]",
+                    params: { id: recipe.id, mode: "eat", from: "community" },
+                  })
+                }
+                style={({ pressed }) => [b.soft, pressed && { opacity: 0.85 }]}
+              >
+                <Ionicons name="restaurant-outline" size={18} color={colors.primary} />
+                <Text style={b.softText}>I ate this (add to calories)</Text>
+              </Pressable>
+            )}
             <Text style={styles.muted}>
               {myCopy
                 ? "Your copy is yours to change. Edits don't affect the shared one."

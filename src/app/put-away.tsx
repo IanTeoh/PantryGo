@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import { ExpiryPicker } from "@/components/ExpiryPicker";
 import { FilterChips } from "@/components/FilterChips";
@@ -133,10 +134,7 @@ export default function PutAwayScreen() {
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
       >
-        <Text style={styles.intro}>
-          Check how much you got of each. Things you already have are topped up; anything new is
-          added to the pantry.
-        </Text>
+        <Text style={styles.intro}>Check the amounts, then put it all away.</Text>
 
         {trolley.map((row) => {
           const d = drafts[row.id];

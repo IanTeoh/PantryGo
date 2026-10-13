@@ -1,4 +1,5 @@
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import { colors, fonts, radius, spacing } from "@/theme";
 import type { NutritionText } from "@/utils/nutrition";

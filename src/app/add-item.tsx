@@ -1,28 +1,24 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import { BarcodeScanner } from "@/components/BarcodeScanner";
+import { Collapsible } from "@/components/Collapsible";
 import { ExpiryPicker } from "@/components/ExpiryPicker";
 import { EstimateBanner } from "@/components/EstimateBanner";
 import { FilterChips } from "@/components/FilterChips";
 import { SplitPicker } from "@/components/SplitPicker";
 import { NutritionFields } from "@/components/NutritionFields";
 import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/data/formOptions";
+import { useAuth } from "@/state/AuthContext";
 import { useBudget } from "@/state/BudgetContext";
 import { useHousehold } from "@/state/HouseholdContext";
 import { usePantry } from "@/state/PantryContext";
 import { colors, fonts, radius, spacing } from "@/theme";
 import type { ContainerType, Item, Location } from "@/types";
+import { AISLES, aisleFor, aisleLabel, type Aisle } from "@/utils/aisles";
 import { addDays } from "@/utils/dates";
 import { lookupBarcode, normaliseBarcode } from "@/utils/openFoodFacts";
 import {
@@ -51,6 +47,7 @@ export default function AddItemScreen() {
   const { items, addItem, changeQuantity } = usePantry();
   const { addPurchase } = useBudget();
   const { household, members } = useHousehold();
+  const { session } = useAuth();
   const spendingOn = household?.spendingEnabled !== false; // the household can turn spending off
 
   // ---- One piece of state per field: these are "controlled inputs" ----
@@ -67,6 +64,11 @@ export default function AddItemScreen() {
   const [splitWith, setSplitWith] = useState<string[]>(() => members.map((m) => m.userId));
   // Optional calories etc. (filled in for you when a scan finds them)
   const [nutritionText, setNutritionText] = useState<NutritionText>(EMPTY_NUTRITION_TEXT);
+  // Its type on the Pantry page: "auto" = worked out from the name
+  const [type, setType] = useState<"auto" | Aisle>("auto");
+  // Which optional sections are open (they start closed to keep the page short)
+  const [open, setOpen] = useState({ price: false, nutrition: false, more: false });
+  const toggle = (key: keyof typeof open) => setOpen((o) => ({ ...o, [key]: !o[key] }));
 
   // ---- Scanning ----
   const [scanning, setScanning] = useState(params.scan === "1");
@@ -82,6 +84,30 @@ export default function AddItemScreen() {
   const hasPrice = priceText.trim() !== "" && Number.isFinite(price) && price > 0;
   const nutrition = parseNutrition(nutritionText);
   const canSave = trimmedName.length > 0 && quantityOk && nutrition.ok;
+
+  // What each folded section says when it's closed
+  const me = session?.user.id;
+  const splitText =
+    members.length <= 1
+      ? ""
+      : splitWith.length === members.length
+        ? " · split with everyone"
+        : splitWith.length === 1 && splitWith[0] === me
+          ? " · just you"
+          : ` · split ${splitWith.length} ways`;
+  const priceSummary = hasPrice
+    ? `$${price.toFixed(2)}${splitText}`
+    : "Optional · adds it to Spending";
+  const n = nutrition.ok ? nutrition.value : null;
+  const nutritionSummary = !nutrition.ok
+    ? "Check the numbers"
+    : n
+      ? `${Math.round(n.kcal)} kcal ${nutritionBasis(unit).label}`
+      : "Optional · for the calorie tracker";
+  const shapeLabel =
+    CONTAINER_OPTIONS.find((o) => o.value === container)?.label +
+    (containerChoice === null ? " (guessed)" : "");
+  const typeLabel = aisleLabel(type === "auto" ? aisleFor(name) : type);
 
   // Cancel: if you came here just to scan (a Scan button) and haven't scanned
   // anything yet, go back to wherever you were. Otherwise show the form.
@@ -108,6 +134,7 @@ export default function AddItemScreen() {
       setContainerChoice(existing.container);
       setLocation(existing.location);
       setNutritionText(nutritionToText(existing.nutrition));
+      if (existing.nutrition) setOpen((o) => ({ ...o, nutrition: true })); // show what came in
       setScan({ kind: "existing", existing });
       return;
     }
@@ -127,6 +154,7 @@ export default function AddItemScreen() {
       }
       setLocation(guessLocation(product.name));
       setNutritionText(nutritionToText(product.nutrition)); // per 100 g/ml, from the label
+      if (product.nutrition) setOpen((o) => ({ ...o, nutrition: true })); // show what came in
       setScan({ kind: "found", brand: product.brand });
     } catch {
       setScan({ kind: "error" });
@@ -147,6 +175,7 @@ export default function AddItemScreen() {
       expiry,
       barcode,
       nutrition: nutrition.ok ? nutrition.value : null,
+      category: type === "auto" ? null : type,
     });
     // If a price was given, record it as spending (paid by you)
     if (spendingOn && hasPrice) {
@@ -220,10 +249,6 @@ export default function AddItemScreen() {
       </View>
       <FilterChips options={UNIT_OPTIONS} selected={unit} onSelect={setUnit} />
 
-      {/* Shape: what the item's detail page draws */}
-      <Text style={[styles.label, styles.padded]}>Shape</Text>
-      <FilterChips options={CONTAINER_OPTIONS} selected={container} onSelect={setContainerChoice} />
-
       {/* Location */}
       <Text style={[styles.label, styles.padded]}>Where does it live?</Text>
       <FilterChips options={LOCATION_OPTIONS} selected={location} onSelect={setLocation} />
@@ -232,45 +257,87 @@ export default function AddItemScreen() {
       <Text style={[styles.label, styles.padded]}>Use by</Text>
       <ExpiryPicker value={expiry} onChange={setExpiry} />
 
-      {/* Nutrition (optional): lets you log calories when you eat it */}
-      <Text style={[styles.label, styles.padded]}>Nutrition (optional)</Text>
-      {/* Boxes still empty? Offer an estimate from the common foods list */}
-      {nutritionText.kcal.trim() === "" && (
-        <EstimateBanner
-          name={name}
-          unit={unit}
-          onUse={(n) => setNutritionText(nutritionToText(n))}
-        />
-      )}
-      <NutritionFields
-        value={nutritionText}
-        onChange={setNutritionText}
-        basisLabel={nutritionBasis(unit).label}
-        invalid={!nutrition.ok}
-      />
+      {/* ---- Optional extras, folded away until you want them ---- */}
+      <View style={styles.extras}>
+        {/* Price (recorded as spending, if the household uses it) and who it's split with */}
+        {spendingOn && (
+          <Collapsible
+            icon="cash-outline"
+            title="Price & split"
+            summary={priceSummary}
+            open={open.price}
+            onToggle={() => toggle("price")}
+          >
+            <View style={styles.field}>
+              <TextInput
+                value={priceText}
+                onChangeText={setPriceText}
+                placeholder="$0.00"
+                placeholderTextColor={colors.textSoft}
+                keyboardType="decimal-pad"
+                style={[styles.input, styles.quantityInput]}
+                accessibilityLabel="Price"
+              />
+              {!hasPrice && members.length > 1 && (
+                <Text style={styles.hint}>Add a price to split it with your household.</Text>
+              )}
+            </View>
+            {/* Who's it for? Only once there's a price to split (and someone to split with) */}
+            {hasPrice && members.length > 1 && (
+              <SplitPicker selected={splitWith} onChange={setSplitWith} amount={price} />
+            )}
+          </Collapsible>
+        )}
 
-      {/* Price (optional): recorded as spending (only if the household uses spending) */}
-      {spendingOn && (
-        <View style={styles.field}>
-          <Text style={styles.label}>Price (optional)</Text>
-          <TextInput
-            value={priceText}
-            onChangeText={setPriceText}
-            placeholder="$0.00"
-            placeholderTextColor={colors.textSoft}
-            keyboardType="decimal-pad"
-            style={[styles.input, styles.quantityInput]}
+        {/* Nutrition: lets you log calories when you eat it */}
+        <Collapsible
+          icon="flame-outline"
+          title="Nutrition"
+          summary={nutritionSummary}
+          open={open.nutrition || !nutrition.ok}
+          onToggle={() => toggle("nutrition")}
+        >
+          {/* Boxes still empty? Offer an estimate from the common foods list */}
+          {nutritionText.kcal.trim() === "" && (
+            <EstimateBanner
+              name={name}
+              unit={unit}
+              onUse={(n) => setNutritionText(nutritionToText(n))}
+            />
+          )}
+          <NutritionFields
+            value={nutritionText}
+            onChange={setNutritionText}
+            basisLabel={nutritionBasis(unit).label}
+            invalid={!nutrition.ok}
           />
-        </View>
-      )}
-      {/* Who's it for? (who the price is split between) */}
-      {spendingOn && (
-        <SplitPicker
-          selected={splitWith}
-          onChange={setSplitWith}
-          amount={hasPrice ? price : undefined}
-        />
-      )}
+        </Collapsible>
+
+        {/* Shape (what the item's page draws) and type (how the Pantry page groups it) */}
+        <Collapsible
+          icon="options-outline"
+          title="More options"
+          summary={`${shapeLabel} · ${typeLabel}`}
+          open={open.more}
+          onToggle={() => toggle("more")}
+        >
+          <Text style={[styles.label, styles.padded]}>Shape</Text>
+          <FilterChips
+            options={CONTAINER_OPTIONS}
+            selected={container}
+            onSelect={setContainerChoice}
+          />
+          <Text style={[styles.label, styles.padded]}>Type</Text>
+          <FilterChips
+            options={[
+              { value: "auto" as const, label: `Automatic (${aisleLabel(aisleFor(name))})` },
+              ...AISLES.map((a) => ({ value: a.key, label: a.label })),
+            ]}
+            selected={type}
+            onSelect={setType}
+          />
+        </Collapsible>
+      </View>
 
       {/* Save */}
       <Pressable
@@ -358,6 +425,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { paddingVertical: spacing.lg, gap: spacing.md },
   field: { gap: spacing.sm, paddingHorizontal: spacing.lg },
+  extras: { gap: spacing.sm, marginTop: spacing.sm },
   padded: { paddingHorizontal: spacing.lg },
   label: {
     fontFamily: fonts.bodyBold,

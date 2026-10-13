@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { View } from "react-native";
-import { SvgXml } from "react-native-svg";
+import { SvgAst, parse } from "react-native-svg";
 
 import { FOOD_ART, FOOD_ART_SIZE, type FoodArtName } from "@/data/foodArt";
 import { colors } from "@/theme";
@@ -14,11 +14,24 @@ export { artForName, pickArt }; // so screens can keep importing them from here
 // from an item's name: "Anchor Blue Milk" → a glass of milk, "Free range eggs" → an egg.
 // ---------------------------------------------------------------------------
 
+// Each drawing is read from its SVG text once, the first time it's needed, and kept.
+// (Reading SVG text is the slow part: doing it for every row made long lists lag.)
+const parsed = new Map<FoodArtName, ReturnType<typeof parse>>();
+function drawingFor(art: FoodArtName) {
+  let ast = parsed.get(art);
+  if (ast === undefined) {
+    ast = parse(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${FOOD_ART_SIZE} ${FOOD_ART_SIZE}">${FOOD_ART[art]}</svg>`,
+    );
+    parsed.set(art, ast);
+  }
+  return ast;
+}
+
 // The drawing on its own, at any size. memo(): only redraws when the props change,
 // which matters in long lists (SVG drawings are slower to draw than text).
 export const FoodArt = memo(function FoodArt({ art, size }: { art: FoodArtName; size: number }) {
-  const xml = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${FOOD_ART_SIZE} ${FOOD_ART_SIZE}">${FOOD_ART[art]}</svg>`;
-  return <SvgXml xml={xml} width={size} height={size} />;
+  return <SvgAst ast={drawingFor(art)} override={{ width: size, height: size }} />;
 });
 
 // The tile colour by where it lives: pale blue fridge, icy freezer, wheat pantry

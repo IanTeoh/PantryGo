@@ -22,7 +22,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "nz.pantrygo.app"
+      "package": "nz.pantrygo.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -35,11 +39,7 @@
         {
           "backgroundColor": "#F3F6F2",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 160,
-          "dark": {
-            "backgroundColor": "#0F1A16",
-            "image": "./assets/images/splash-icon-dark.png"
-          }
+          "imageWidth": 160
         }
       ],
       [
@@ -68,6 +68,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0d25c492-1ee0-4035-8f3f-def8d3f39fce"
+      }
+    },
+    "owner": "ianteohs-team"
   }
 }

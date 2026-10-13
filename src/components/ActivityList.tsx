@@ -1,4 +1,6 @@
-import { StyleSheet, Text, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { router } from "expo-router";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useAuth } from "@/state/AuthContext";
 import { useHousehold } from "@/state/HouseholdContext";
@@ -16,7 +18,7 @@ const AVATAR_TONES = [
 ];
 
 // A card listing activity-log entries: "Used 120 ml of Olive oil · Sam · 5 min ago".
-// Used on the Home tab and on each item's page.
+// Used on the Home tab and on each item's page. Tap one for the details, and Undo.
 export function ActivityList({ events, emptyText }: { events: PantryEvent[]; emptyText: string }) {
   const { session } = useAuth();
   const { members } = useHousehold();
@@ -43,7 +45,17 @@ export function ActivityList({ events, emptyText }: { events: PantryEvent[]; emp
           const p = person(event.userId);
           const tone = AVATAR_TONES[p.index % AVATAR_TONES.length];
           return (
-            <View key={event.id} style={[styles.row, i > 0 && styles.divider]}>
+            <Pressable
+              key={event.id}
+              onPress={() => router.push({ pathname: "/activity/[id]", params: { id: event.id } })}
+              style={({ pressed }) => [
+                styles.row,
+                i > 0 && styles.divider,
+                pressed && { opacity: 0.6 },
+              ]}
+              accessibilityRole="button"
+              accessibilityHint="Shows the details, and lets you undo it"
+            >
               <View
                 style={[
                   styles.avatar,
@@ -60,7 +72,8 @@ export function ActivityList({ events, emptyText }: { events: PantryEvent[]; emp
                   {p.name} · {timeAgo(event.at)}
                 </Text>
               </View>
-            </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSoft} />
+            </Pressable>
           );
         })
       )}

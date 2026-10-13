@@ -6,16 +6,18 @@ import { CalorieGauge } from "@/components/CalorieGauge";
 import { PressableScale } from "@/components/PressableScale";
 
 import { entriesOn, lastDays, useNutrition, type Goals } from "@/state/NutritionContext";
-import { colors, fonts, radius, spacing, tints } from "@/theme";
+import { usePreferences } from "@/state/PreferencesContext";
+import { colors, fonts, macroColors, radius, spacing } from "@/theme";
 import { toIsoDate } from "@/utils/dates";
 import { formatGrams, formatKcal, sumMacros } from "@/utils/nutrition";
 
 // A small calorie summary that opens the full Calories page.
 //   "today" (Home):   today's total, a progress bar and macros
-//   "week" (Impact):  the daily average and a mini bar for each of the last 7 days
+//   "week" (Insights):  the daily average and a mini bar for each of the last 7 days
 export function CaloriesCard({ variant }: { variant: "today" | "week" }) {
   const { entries, goals, loading } = useNutrition();
-  if (loading) return null;
+  const { prefs } = usePreferences();
+  if (loading || !prefs.trackCalories) return null; // calories are an extra, off unless switched on
 
   const today = toIsoDate(new Date());
   const todayTotals = sumMacros(entriesOn(entries, today));
@@ -31,7 +33,10 @@ export function CaloriesCard({ variant }: { variant: "today" | "week" }) {
         <View style={styles.iconBox}>
           <Ionicons name="flame-outline" size={18} color={colors.primary} />
         </View>
-        <Text style={styles.title}>{variant === "today" ? "Today" : "Calories this week"}</Text>
+        <Text style={styles.title}>
+          {variant === "today" ? "Calories & macros" : "Calories this week"}
+        </Text>
+        {variant === "today" && <Text style={styles.when}>Today</Text>}
         <Ionicons name="chevron-forward" size={18} color={colors.textSoft} />
       </View>
 
@@ -54,9 +59,9 @@ function TodayBody({
   totals: { protein: number; carbs: number; fat: number };
 }) {
   const macros = [
-    { label: "Protein", value: totals.protein, goal: goals.protein, color: tints.coral.icon },
-    { label: "Carbs", value: totals.carbs, goal: goals.carbs, color: tints.honey.icon },
-    { label: "Fat", value: totals.fat, goal: goals.fat, color: tints.sky.icon },
+    { label: "Protein", value: totals.protein, goal: goals.protein, color: macroColors.protein },
+    { label: "Carbs", value: totals.carbs, goal: goals.carbs, color: macroColors.carbs },
+    { label: "Fat", value: totals.fat, goal: goals.fat, color: macroColors.fat },
   ];
 
   // With a goal: a small dial on the left, a bar for each macro filling the right
@@ -157,6 +162,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   title: { flex: 1, fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
+  when: { fontFamily: fonts.body, fontSize: 13, color: colors.textSoft },
   body: { gap: spacing.sm },
   big: { fontFamily: fonts.heading, fontSize: 28, color: colors.text },
   bigUnit: { fontFamily: fonts.body, fontSize: 14, color: colors.textSoft },

@@ -1,13 +1,11 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import type { ComponentProps } from "react";
 import { useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ActivityList } from "@/components/ActivityList";
 import { BigHeader } from "@/components/BigHeader";
 import { CaloriesCard } from "@/components/CaloriesCard";
-import { Gradient } from "@/components/Gradient";
 import { HouseholdSwitcher } from "@/components/HouseholdSwitcher";
 import { PressableScale } from "@/components/PressableScale";
 import { FoodIcon } from "@/components/FoodIcon";
@@ -19,8 +17,7 @@ import { usePreferences } from "@/state/PreferencesContext";
 import { useCommunity } from "@/state/CommunityContext";
 import { useRecipes } from "@/state/RecipesContext";
 import { useReminders } from "@/state/RemindersContext";
-import { useShopping } from "@/state/ShoppingContext";
-import { colors, fonts, radius, spacing, tints, type Tint } from "@/theme";
+import { colors, fonts, radius, spacing } from "@/theme";
 import type { Item } from "@/types";
 import type { Recipe } from "@/utils/recipes";
 import { daysUntil } from "@/utils/dates";
@@ -56,7 +53,6 @@ export default function HomeScreen() {
   const { recipes } = useRecipes();
   const community = useCommunity();
   const reminders = useReminders();
-  const { list } = useShopping();
   const [refreshing, setRefreshing] = useState(false);
   const [switching, setSwitching] = useState(false); // the household switcher is open
 
@@ -73,7 +69,6 @@ export default function HomeScreen() {
   const useSoon = items
     .filter((it) => it.quantity > 0 && ["urgent", "soon"].includes(getFreshness(it)))
     .sort(compareByExpiry);
-  const toBuy = list.filter((r) => !r.done).length;
 
   // "Cook tonight": recipes ranked by how much you have, then by whether they use
   // something that needs using soon. Your own first; popular shared ones fill the rest.
@@ -162,39 +157,59 @@ export default function HomeScreen() {
         </Pressable>
         <HouseholdSwitcher visible={switching} onClose={() => setSwitching(false)} />
 
-        {/* ---- Hero: cook tonight ---- */}
-        <View style={styles.hero}>
-          <Gradient />
-          <View style={styles.heroHeader}>
+        {/* ---- Use soon (slim) ---- */}
+        {useSoon.length > 0 && (
+          <PressableScale
+            scaleTo={0.97}
+            onPress={() => router.push("/pantry")}
+            style={styles.soonRow}
+          >
+            <View style={styles.soonIcons}>
+              {useSoon.slice(0, 3).map((it, i) => (
+                <View key={it.id} style={[styles.soonIconWrap, i > 0 && { marginLeft: -10 }]}>
+                  <FoodIcon
+                    name={it.name}
+                    container={it.container}
+                    location={it.location}
+                    size={34}
+                  />
+                </View>
+              ))}
+            </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.heroEyebrow}>COOK TONIGHT</Text>
-              <Text style={styles.heroTitle}>
-                {cookTonight.length > 0 ? "From what you've got" : "Your recipe book"}
+              <Text style={styles.soonTitle}>{useSoon.length} to use soon</Text>
+              <Text style={styles.soonText} numberOfLines={1}>
+                {soonSummary(useSoon)}
               </Text>
             </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSoft} />
+          </PressableScale>
+        )}
+
+        {/* ---- Cook tonight: a quiet row of recipe cards ---- */}
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Cook tonight</Text>
             <Pressable onPress={() => router.push("/recipes")} hitSlop={8}>
-              <Text style={styles.heroLink}>See all</Text>
+              <Text style={styles.link}>See all</Text>
             </Pressable>
           </View>
-
           {cookTonight.length === 0 ? (
-            <View style={styles.heroEmpty}>
-              <Text style={styles.heroEmptyText}>
-                Add the meals you make. PantryGo will suggest what to cook from what's in your
-                pantry.
+            <Pressable
+              onPress={() => router.push("/recipe-edit")}
+              style={({ pressed }) => [styles.emptyRow, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.emptyText}>
+                Add the meals you make, and PantryGo suggests what to cook from your pantry.
               </Text>
-              <Pressable
-                onPress={() => router.push("/recipe-edit")}
-                style={({ pressed }) => [styles.heroButton, pressed && { opacity: 0.85 }]}
-              >
-                <Text style={styles.heroButtonText}>Add a recipe</Text>
-              </Pressable>
-            </View>
+              <Text style={styles.link}>Add a recipe</Text>
+            </Pressable>
           ) : (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.recipeRow}
+              style={styles.bleed}
             >
               {cookTonight.map(({ recipe, source, popular, ready, usesSoon }) => {
                 const tag = ready.canMake
@@ -241,27 +256,8 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* ---- Quick actions ---- */}
-        <View style={styles.actions}>
-          <QuickAction
-            icon="barcode-outline"
-            label="Scan"
-            tint={tints.sky}
-            onPress={() => router.push({ pathname: "/add-item", params: { scan: "1" } })}
-          />
-          <QuickAction
-            icon="add"
-            label="Add item"
-            tint={tints.mint}
-            onPress={() => router.push("/add-item")}
-          />
-          <QuickAction
-            icon="cart-outline"
-            label={toBuy > 0 ? `List · ${toBuy}` : "List"}
-            tint={tints.honey}
-            onPress={() => router.push("/shopping")}
-          />
-        </View>
+        {/* ---- Today's calories (only if you've switched calories on) ---- */}
+        <CaloriesCard variant="today" />
 
         {/* ---- A one-time offer to turn on expiry reminders ---- */}
         {reminders.permission === "undetermined" && !reminders.prefs.asked && (
@@ -270,8 +266,7 @@ export default function HomeScreen() {
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={styles.reminderTitle}>Get a heads-up before food goes off</Text>
               <Text style={styles.reminderText}>
-                One short reminder on days something needs using. Change it any time in your
-                profile.
+                One short nudge on days something needs using.
               </Text>
               <View style={styles.reminderButtons}>
                 <PressableScale
@@ -289,72 +284,23 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ---- Today's calories (private to you) ---- */}
-        <CaloriesCard variant="today" />
-
-        {/* ---- Use soon (slim) ---- */}
-        {useSoon.length > 0 && (
-          <PressableScale
-            scaleTo={0.97}
-            onPress={() => router.push("/pantry")}
-            style={styles.soonRow}
-          >
-            <View style={styles.soonIcons}>
-              {useSoon.slice(0, 3).map((it, i) => (
-                <View key={it.id} style={[styles.soonIconWrap, i > 0 && { marginLeft: -10 }]}>
-                  <FoodIcon
-                    name={it.name}
-                    container={it.container}
-                    location={it.location}
-                    size={34}
-                  />
-                </View>
-              ))}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.soonTitle}>{useSoon.length} to use soon</Text>
-              <Text style={styles.soonText} numberOfLines={1}>
-                {soonSummary(useSoon)}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSoft} />
-          </PressableScale>
-        )}
-
         {/* ---- Recent ---- */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent</Text>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Recent</Text>
+            {events.length > 0 && (
+              <Pressable onPress={() => router.push("/activity")} hitSlop={8}>
+                <Text style={styles.link}>See all</Text>
+              </Pressable>
+            )}
+          </View>
           <ActivityList
-            events={events.slice(0, 4)}
+            events={events.slice(0, 3)}
             emptyText="Nothing yet. Add or use something in your pantry and it'll show up here."
           />
         </View>
       </View>
     </ScrollView>
-  );
-}
-
-function QuickAction({
-  icon,
-  label,
-  tint,
-  onPress,
-}: {
-  icon: ComponentProps<typeof Ionicons>["name"];
-  label: string;
-  tint: Tint;
-  onPress: () => void;
-}) {
-  return (
-    <PressableScale
-      scaleTo={0.93}
-      onPress={onPress}
-      style={[styles.action, { backgroundColor: tint.bg }]}
-      accessibilityRole="button"
-    >
-      <Ionicons name={icon} size={24} color={tint.icon} />
-      <Text style={styles.actionText}>{label}</Text>
-    </PressableScale>
   );
 }
 
@@ -368,37 +314,17 @@ const styles = StyleSheet.create({
   liveDot: { width: 8, height: 8, borderRadius: 4 },
   householdMeta: { fontFamily: fonts.body, fontSize: 13, color: colors.textSoft },
 
-  hero: {
-    backgroundColor: colors.hero,
-    borderRadius: radius.xl,
-    paddingVertical: spacing.lg + 4,
-    gap: spacing.md,
-    overflow: "hidden",
+  sectionHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+  link: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.primary },
+  bleed: { marginHorizontal: -spacing.lg },
+  emptyRow: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
-  heroHeader: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: spacing.lg + 4,
-  },
-  heroEyebrow: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 11,
-    letterSpacing: 1,
-    color: colors.onHeroSoft,
-  },
-  heroTitle: { fontFamily: fonts.heading, fontSize: 22, color: colors.onHero, marginTop: 2 },
-  heroLink: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.onHero },
-  heroEmpty: { paddingHorizontal: spacing.lg + 4, gap: spacing.md },
-  heroEmptyText: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.onHeroSoft },
-  heroButton: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.onHero,
-    borderRadius: radius.pill,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.lg,
-  },
-  heroButtonText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.hero },
-  recipeRow: { gap: 10, paddingHorizontal: spacing.lg + 4 },
+  emptyText: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.textSoft },
+  recipeRow: { gap: 10, paddingHorizontal: spacing.lg },
   recipeCard: {
     width: 200,
     backgroundColor: colors.surface,
@@ -428,18 +354,6 @@ const styles = StyleSheet.create({
   recipeText: { padding: spacing.md, gap: 4 },
   recipeTitle: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
   recipeMeta: { fontFamily: fonts.body, fontSize: 12, color: colors.textSoft },
-
-  actions: { flexDirection: "row", gap: 10 },
-  action: {
-    flex: 1,
-    height: 76,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-  actionText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.text },
 
   soonRow: {
     flexDirection: "row",

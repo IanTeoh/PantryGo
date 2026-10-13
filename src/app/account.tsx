@@ -11,9 +11,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import { FilterChips } from "@/components/FilterChips";
 import { PressableScale } from "@/components/PressableScale";
@@ -25,18 +25,12 @@ import { useHousehold } from "@/state/HouseholdContext";
 import { useNutrition } from "@/state/NutritionContext";
 import { usePreferences } from "@/state/PreferencesContext";
 import { useReminders } from "@/state/RemindersContext";
+import { readItemView, saveItemView, type ItemView } from "@/utils/itemView";
 import { cuisineLabel } from "@/utils/recipeMeta";
-import type { ThemeChoice } from "@/theme";
 import { colors, fonts, radius, saveThemeChoice, spacing, themeChoice } from "@/theme";
 import { success, tick, warning } from "@/utils/haptics";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
-
-const THEME_OPTIONS: { value: ThemeChoice; label: string; icon: IconName }[] = [
-  { value: "system", label: "System", icon: "phone-portrait-outline" },
-  { value: "light", label: "Light", icon: "sunny-outline" },
-  { value: "dark", label: "Dark", icon: "moon-outline" },
-];
 
 const WHEN_OPTIONS = [
   { value: "0", label: "On the day" },
@@ -95,14 +89,6 @@ export default function ProfileScreen() {
   }
 
   // ---- Appearance ----
-  function chooseTheme(choice: ThemeChoice) {
-    if (choice === themeChoice) return;
-    tick();
-    saveThemeChoice(choice);
-    // Restart the JavaScript side so every screen is rebuilt with the new colours.
-    // You stay signed in: your session is saved on the phone, not in memory.
-    reloadAppAsync("Theme changed");
-  }
 
   // ---- Deleting your account ----
   const [deleteStep, setDeleteStep] = useState<0 | 1>(0);
@@ -191,6 +177,9 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {/* ---- Extras you can switch on ---- */}
+      <Features />
+
       {/* ---- Notifications ---- */}
       <Section title="Notifications">
         <View style={styles.card}>
@@ -252,38 +241,6 @@ export default function ProfileScreen() {
 
       {/* ---- Food & goals ---- */}
       <FoodAndGoals />
-
-      {/* ---- Appearance ---- */}
-      <Section title="Appearance">
-        <View style={styles.segment}>
-          {THEME_OPTIONS.map((opt) => {
-            const selected = opt.value === themeChoice;
-            return (
-              <Pressable
-                key={opt.value}
-                onPress={() => chooseTheme(opt.value)}
-                style={[styles.segmentItem, selected && styles.segmentItemOn]}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-              >
-                <Ionicons
-                  name={opt.icon}
-                  size={18}
-                  color={selected ? colors.background : colors.textSoft}
-                />
-                <Text style={[styles.segmentText, selected && styles.segmentTextOn]}>
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Text style={styles.hint}>
-          {themeChoice === "system"
-            ? "Follows your phone's light or dark setting."
-            : `Always ${themeChoice}, whatever your phone is set to.`}
-        </Text>
-      </Section>
 
       {/* ---- Households ---- */}
       <Section title="Your households">
@@ -444,6 +401,96 @@ function BlockedPeople() {
   );
 }
 
+// Extras: off unless you switch them on, so the app stays simple
+function Features() {
+  const { prefs, savePrefs } = usePreferences();
+  const { household, setSpendingEnabled } = useHousehold();
+  const { session } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const isOwner = household?.ownerId === session?.user.id;
+  const spendingOn = household?.spendingEnabled !== false;
+  const [itemView, setItemView] = useState<ItemView>(readItemView);
+
+  function toggleDark() {
+    tick();
+    saveThemeChoice(themeChoice === "dark" ? "light" : "dark");
+    // Restart the JavaScript side so every screen is rebuilt with the new colours.
+    // You stay signed in: your session is saved on the phone, not in memory.
+    reloadAppAsync("Theme changed");
+  }
+
+  return (
+    <Section title="Features">
+      <View style={styles.card}>
+        <View style={styles.settingRow}>
+          <RowIcon name="flame-outline" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>Track calories</Text>
+            <Text style={styles.rowSub}>
+              A private food diary with daily goals. Only you see it.
+            </Text>
+          </View>
+          <Toggle
+            on={prefs.trackCalories}
+            onPress={() => {
+              tick();
+              savePrefs({ trackCalories: !prefs.trackCalories });
+            }}
+          />
+        </View>
+        {household && (
+          <View style={[styles.settingRow, styles.divider]}>
+            <RowIcon name="wallet-outline" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>Split costs</Text>
+              <Text style={styles.rowSub}>
+                {isOwner
+                  ? `Track spending and who owes whom in ${household.name}.`
+                  : `${spendingOn ? "On" : "Off"} for ${household.name}. Only the owner can change it.`}
+              </Text>
+            </View>
+            <Toggle
+              on={spendingOn}
+              disabled={!isOwner}
+              onPress={async () => {
+                tick();
+                setError(await setSpendingEnabled(household.id, !spendingOn));
+              }}
+            />
+          </View>
+        )}
+        <View style={[styles.settingRow, styles.divider]}>
+          <RowIcon name="flask-outline" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>Container drawings</Text>
+            <Text style={styles.rowSub}>
+              Show a bottle or jar you drag on item pages, instead of a simple bar.
+            </Text>
+          </View>
+          <Toggle
+            on={itemView === "drawing"}
+            onPress={() => {
+              tick();
+              const next = itemView === "drawing" ? "simple" : "drawing";
+              setItemView(next);
+              saveItemView(next);
+            }}
+          />
+        </View>
+        <View style={[styles.settingRow, styles.divider]}>
+          <RowIcon name="moon-outline" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>Dark mode</Text>
+            <Text style={styles.rowSub}>The app restarts for a moment to switch.</Text>
+          </View>
+          <Toggle on={themeChoice === "dark"} onPress={toggleDark} />
+        </View>
+      </View>
+      {error && <Text style={styles.hint}>{error}</Text>}
+    </Section>
+  );
+}
+
 function FoodAndGoals() {
   const { prefs } = usePreferences();
   const { goals } = useNutrition();
@@ -459,7 +506,7 @@ function FoodAndGoals() {
       .join(" · ") || "Pick cuisines you like";
 
   return (
-    <Section title="Food & goals">
+    <Section title={prefs.trackCalories ? "Food & goals" : "Food"}>
       <View style={styles.card}>
         <NavRow
           icon="restaurant-outline"
@@ -468,18 +515,22 @@ function FoodAndGoals() {
           href="/food-preferences"
           first
         />
-        <NavRow
-          icon="flame-outline"
-          label="Calorie goals"
-          sub={goals.kcal ? `${goals.kcal} kcal a day` : "No goal set"}
-          href="/nutrition-goals"
-        />
-        <NavRow
-          icon="calculator-outline"
-          label="Suggest goals from my details"
-          sub="Height, weight and activity. Not saved."
-          href="/setup-goals"
-        />
+        {prefs.trackCalories && (
+          <>
+            <NavRow
+              icon="flame-outline"
+              label="Calorie goals"
+              sub={goals.kcal ? `${goals.kcal} kcal a day` : "No goal set"}
+              href="/nutrition-goals"
+            />
+            <NavRow
+              icon="calculator-outline"
+              label="Suggest goals from my details"
+              sub="Height, weight and activity. Not saved."
+              href="/setup-goals"
+            />
+          </>
+        )}
       </View>
     </Section>
   );
@@ -676,26 +727,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   smallButtonText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.onPrimary },
-
-  segment: {
-    flexDirection: "row",
-    backgroundColor: colors.surface,
-    borderRadius: radius.pill,
-    padding: 4,
-    gap: 4,
-  },
-  segmentItem: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    height: 40,
-    borderRadius: radius.pill,
-  },
-  segmentItemOn: { backgroundColor: colors.text },
-  segmentText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.textSoft },
-  segmentTextOn: { color: colors.background },
 
   hhAvatar: {
     width: 32,

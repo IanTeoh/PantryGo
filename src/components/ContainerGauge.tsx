@@ -8,7 +8,7 @@ import { colors } from "@/theme";
 import type { ContainerType } from "@/types";
 
 // ---------------------------------------------------------------------------
-// The shapes. Each is drawn on a 100 × 160 grid (the "viewBox"), then scaled
+// The shapes (bottle, carton, jar, bag, box, can, tub, packet). Each is drawn on a 100 × 160 grid (the "viewBox"), then scaled
 // to whatever size we display it at.
 //   outline: the SVG path of the container's inside
 //   top / bottom: the grid y values for "full" and "empty"
@@ -26,52 +26,109 @@ const SHAPES: Record<
 > = {
   bottle: {
     outline:
-      "M42 12 H58 V30 C58 40 85 42 85 58 V146 Q85 156 75 156 H25 Q15 156 15 146 V58 C15 42 42 40 42 30 Z",
-    top: 34,
+      "M42 16 H58 V30 C58 40 84 44 84 60 V146 Q84 156 74 156 H26 Q16 156 16 146 V60 C16 44 42 40 42 30 Z",
+    top: 44,
     bottom: 156,
-    right: 85,
-    extras: <Rect x={39} y={3} width={22} height={10} rx={2.5} fill={colors.primary} />,
+    right: 84,
+    extras: <Rect x={38} y={5} width={24} height={12} rx={3} fill={colors.primary} />,
   },
   carton: {
-    outline: "M20 42 L50 16 L80 42 V150 Q80 156 74 156 H26 Q20 156 20 150 Z",
-    top: 42,
+    outline: "M20 46 L32 26 H68 L80 46 V148 Q80 156 72 156 H28 Q20 156 20 148 Z",
+    top: 46,
     bottom: 156,
     right: 80,
     extras: (
       <>
-        <Rect x={44} y={6} width={12} height={10} rx={2} fill={colors.primary} />
-        <Line x1={20} y1={42} x2={80} y2={42} stroke={colors.primary} strokeWidth={1.5} />
+        <Line x1={20} y1={46} x2={80} y2={46} stroke={colors.text} strokeWidth={2} />
+        <Rect x={56} y={14} width={12} height={12} rx={2.5} fill={colors.primary} />
       </>
     ),
   },
   jar: {
-    outline: "M24 32 H76 Q86 32 86 42 V146 Q86 156 76 156 H24 Q14 156 14 146 V42 Q14 32 24 32 Z",
-    top: 36,
+    outline: "M22 36 H78 Q86 36 86 46 V144 Q86 156 74 156 H26 Q14 156 14 144 V46 Q14 36 22 36 Z",
+    top: 40,
     bottom: 156,
     right: 86,
-    extras: <Rect x={16} y={14} width={68} height={16} rx={4} fill={colors.primary} />,
+    extras: <Rect x={18} y={16} width={64} height={18} rx={5} fill={colors.primary} />,
   },
   bag: {
-    outline: "M22 24 H78 L84 146 Q84 156 74 156 H26 Q16 156 16 146 Z",
-    top: 34,
+    outline: "M24 30 H76 L84 144 Q85 156 73 156 H27 Q15 156 16 144 Z",
+    top: 38,
+    bottom: 156,
+    right: 82,
+    extras: <Rect x={21} y={15} width={58} height={14} rx={3} fill={colors.primary} />,
+  },
+  box: {
+    outline: "M18 42 H82 V150 Q82 156 76 156 H24 Q18 156 18 150 Z",
+    top: 42,
     bottom: 156,
     right: 82,
     extras: (
-      <Path
-        d="M22 24 L27 16 L32 24 L37 16 L42 24 L47 16 L52 24 L57 16 L62 24 L67 16 L72 24 L77 16 L78 24"
-        fill="none"
-        stroke={colors.primary}
-        strokeWidth={2}
-        strokeLinejoin="round"
-      />
+      <>
+        <Path
+          d="M18 42 L28 26 H72 L82 42"
+          fill="none"
+          stroke={colors.text}
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+        />
+        <Line x1={50} y1={26} x2={50} y2={42} stroke={colors.text} strokeWidth={2} />
+      </>
     ),
   },
-  box: {
-    outline: "M18 28 H82 V150 Q82 156 76 156 H24 Q18 156 18 150 Z",
-    top: 28,
+  can: {
+    outline: "M20 34 H80 V148 Q80 156 72 156 H28 Q20 156 20 148 Z",
+    top: 34,
     bottom: 156,
-    right: 82,
-    extras: <Line x1={18} y1={42} x2={82} y2={42} stroke={colors.primary} strokeWidth={1.5} />,
+    right: 80,
+    extras: (
+      <>
+        <Rect x={17} y={22} width={66} height={12} rx={6} fill={colors.primary} />
+        <Line
+          x1={20}
+          y1={56}
+          x2={80}
+          y2={56}
+          stroke={colors.text}
+          strokeOpacity={0.25}
+          strokeWidth={1.5}
+        />
+        <Line
+          x1={20}
+          y1={134}
+          x2={80}
+          y2={134}
+          stroke={colors.text}
+          strokeOpacity={0.25}
+          strokeWidth={1.5}
+        />
+      </>
+    ),
+  },
+  tub: {
+    outline: "M12 70 H88 L82 146 Q81 156 71 156 H29 Q19 156 18 146 Z",
+    top: 70,
+    bottom: 156,
+    right: 85,
+    extras: <Rect x={7} y={56} width={86} height={14} rx={5} fill={colors.primary} />,
+  },
+  packet: {
+    outline: "M24 22 H76 Q80 22 80 26 V138 Q80 156 62 156 H38 Q20 156 20 138 V26 Q20 22 24 22 Z",
+    top: 38,
+    bottom: 156,
+    right: 80,
+    extras: (
+      <>
+        <Line x1={20} y1={36} x2={80} y2={36} stroke={colors.text} strokeWidth={2} />
+        <Path
+          d="M80 26 L74 29 L80 32"
+          fill="none"
+          stroke={colors.text}
+          strokeWidth={2}
+          strokeLinejoin="round"
+        />
+      </>
+    ),
   },
 };
 

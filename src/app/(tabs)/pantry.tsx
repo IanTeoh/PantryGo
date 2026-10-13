@@ -1,25 +1,40 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import { useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
+import { Storage } from "expo-sqlite/kv-store";
+import { useDeferredValue, useState } from "react";
+import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { TextInput } from "@/components/TextInput";
 
 import Animated from "react-native-reanimated";
 
 import { BigHeader } from "@/components/BigHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonRows } from "@/components/Skeleton";
-import { FilterChips } from "@/components/FilterChips";
+import { FoodIcon } from "@/components/FoodIcon";
 import { ItemRow } from "@/components/ItemRow";
 import { PressableScale } from "@/components/PressableScale";
 import { sampleItems } from "@/data/sampleItems";
 import { usePantry } from "@/state/PantryContext";
 import { colors, fonts, radius, spacing } from "@/theme";
-import type { Location } from "@/types";
-import { compareByExpiry, getFreshness } from "@/utils/freshness";
+import type { Item } from "@/types";
+import { compareByExpiry } from "@/utils/freshness";
 import { rowEntering, rowExiting, rowLayout } from "@/utils/motion";
+import { isSoon, shelvesFor, type ShelfBy, type ShelfKey } from "@/utils/shelves";
 
-// "all" plus the three real locations
-type LocationFilter = "all" | Location;
+// Show the shelves by type (Spices & herbs, Meat…) or by where things are kept.
+// Remembered on this phone.
+type ViewMode = ShelfBy;
+const VIEW_KEY = "pantrygo.pantryView";
+function readView(): ViewMode {
+  try {
+    return Storage.getItemSync(VIEW_KEY) === "place" ? "place" : "type";
+  } catch {
+    return "type";
+  }
+}
+
+// How many "use soon" items to show here before "See all"
+const SOON_PREVIEW = 3;
 
 export default function PantryScreen() {
   // ---- Shared data: lives in PantryContext so every tab sees the same items ----
@@ -27,32 +42,35 @@ export default function PantryScreen() {
     usePantry();
 
   // ---- Local state: only this screen cares ----
-  const [filter, setFilter] = useState<LocationFilter>("all");
+  const [view, setView] = useState<ViewMode>(readView);
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
-  // ---- Derived values: worked out from state on every render, never stored ----
-  const countIn = (loc: Location) => items.filter((it) => it.location === loc).length;
-  const filters: { value: LocationFilter; label: string; dot?: string }[] = [
-    { value: "all", label: `All · ${items.length}` },
-    { value: "fridge", label: `Fridge · ${countIn("fridge")}`, dot: colors.iconFridge },
-    { value: "freezer", label: `Freezer · ${countIn("freezer")}`, dot: colors.iconFreezer },
-    { value: "pantry", label: `Pantry · ${countIn("pantry")}`, dot: colors.iconPantry },
-  ];
+  // The shelves follow a moment after a tap (useDeferredValue), so the switch
+  // responds instantly while the list is rebuilt behind it
+  const listView = useDeferredValue(view);
 
-  const visible = items
-    .filter((it) => filter === "all" || it.location === filter)
-    // Search: keep items whose name contains what's typed (ignoring capitals)
-    .filter((it) => it.name.toLowerCase().includes(search.trim().toLowerCase()))
-    .sort(compareByExpiry);
+  function chooseView(next: ViewMode) {
+    setView(next);
+    try {
+      Storage.setItemSync(VIEW_KEY, next);
+    } catch {
+      // not remembered this time: fine
+    }
+  }
 
-  // Two sections: things to use soon (in stock, and urgent or soon), then the rest
-  const isSoon = (it: (typeof items)[number]) =>
-    it.quantity > 0 && ["urgent", "soon"].includes(getFreshness(it));
-  const sections = [
-    { title: "Use soon", data: visible.filter(isSoon) },
-    { title: "Everything else", data: visible.filter((it) => !isSoon(it)) },
-  ].filter((s) => s.data.length > 0); // hide empty sections
+  // ---- Derived values: worked out on every render, never stored ----
+  const q = search.trim().toLowerCase();
+  const searching = q !== "";
+  const results = searching
+    ? items.filter((it) => it.name.toLowerCase().includes(q)).sort(compareByExpiry)
+    : [];
+  const soon = items.filter(isSoon).sort(compareByExpiry);
+  const shelves = shelvesFor(items, listView);
+
+  function openShelf(key: ShelfKey) {
+    router.push({ pathname: "/shelf/[key]", params: { key, by: listView } });
+  }
 
   // Pull down on the list to fetch the latest from the database
   async function onRefresh() {
@@ -66,9 +84,25 @@ export default function PantryScreen() {
     sampleItems.forEach(({ id, ...rest }) => addItem(rest));
   }
 
+  const row = (item: Item, index: number) => (
+    // entering / exiting / layout: how each row arrives, leaves and moves
+    <Animated.View
+      key={item.id}
+      entering={rowEntering(index)}
+      exiting={rowExiting}
+      layout={rowLayout}
+    >
+      <ItemRow
+        item={item}
+        onChangeQuantity={changeQuantity}
+        onUsedAll={(id) => setQuantity(id, 0)}
+        onDiscard={discardItem}
+      />
+    </Animated.View>
+  );
+
   return (
     <View style={styles.container}>
-      {/* A plain scroll view (not a SectionList) so rows can glide when others come and go */}
       <Animated.ScrollView
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
@@ -88,53 +122,113 @@ export default function PantryScreen() {
               clearButtonMode="while-editing" // iPhone: an ✕ to clear it
             />
           </View>
-          <FilterChips options={filters} selected={filter} onSelect={setFilter} />
         </View>
 
-        {sections.length === 0 ? (
-          loading ? (
-            <SkeletonRows count={6} />
-          ) : items.length === 0 ? (
-            // A brand-new household: nothing in it at all
-            <EmptyState
-              inset
-              art={["carrot", "glass-of-milk", "cheese-wedge"]}
-              title="Your pantry is empty"
-              text="Scan or add what's in your fridge, freezer and cupboards. Everyone in your household will see it."
-              action={{ label: "Add an item", onPress: () => router.push("/add-item") }}
-              secondary={{ label: "Add some example items", onPress: addExamples }}
-            />
+        {loading && items.length === 0 ? (
+          <SkeletonRows count={6} />
+        ) : items.length === 0 ? (
+          // A brand-new household: nothing in it at all
+          <EmptyState
+            inset
+            art={["carrot", "glass-of-milk", "cheese-wedge"]}
+            title="Your pantry is empty"
+            text="Scan or add what's in your fridge, freezer and cupboards. Everyone in your household will see it."
+            action={{ label: "Add an item", onPress: () => router.push("/add-item") }}
+            secondary={{ label: "Add some example items", onPress: addExamples }}
+          />
+        ) : searching ? (
+          // ---- Searching: every match, from every shelf ----
+          results.length === 0 ? (
+            <Text style={styles.empty}>Nothing matches "{search.trim()}".</Text>
           ) : (
-            <Text style={styles.empty}>
-              {search ? `Nothing matches "${search.trim()}".` : "Nothing here yet."}
-            </Text>
+            <View>
+              <Text style={styles.sectionTitle}>
+                {results.length} {results.length === 1 ? "MATCH" : "MATCHES"}
+              </Text>
+              {results.map(row)}
+            </View>
           )
         ) : (
-          sections.map((section) => (
-            <Animated.View key={section.title} layout={rowLayout}>
-              <Text style={styles.sectionTitle}>{section.title.toUpperCase()}</Text>
-              {section.data.map((item, index) => (
-                // entering / exiting / layout: how each row arrives, leaves and moves
-                <Animated.View
-                  key={item.id}
-                  entering={rowEntering(index)}
-                  exiting={rowExiting}
-                  layout={rowLayout}
-                >
-                  <ItemRow
-                    item={item}
-                    onChangeQuantity={changeQuantity}
-                    onUsedAll={(id) => setQuantity(id, 0)}
-                    onDiscard={discardItem}
-                  />
-                </Animated.View>
-              ))}
-            </Animated.View>
-          ))
-        )}
+          <>
+            {/* ---- Use soon: the few that need using first ---- */}
+            {soon.length > 0 && (
+              <View>
+                <View style={styles.sectionHead}>
+                  <Text style={styles.sectionTitle}>USE SOON · {soon.length}</Text>
+                  {soon.length > SOON_PREVIEW && (
+                    <Pressable onPress={() => openShelf("soon")} hitSlop={8}>
+                      <Text style={styles.seeAll}>See all</Text>
+                    </Pressable>
+                  )}
+                </View>
+                {soon.slice(0, SOON_PREVIEW).map(row)}
+              </View>
+            )}
 
-        {items.length > 0 && (
-          <Text style={styles.footerHint}>Swipe an item left to mark it used or binned.</Text>
+            {/* ---- The shelves: tap one to open it ---- */}
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>SHELVES</Text>
+              <View style={styles.segment}>
+                {(
+                  [
+                    ["type", "Type"],
+                    ["place", "Location"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Pressable
+                    key={value}
+                    onPress={() => chooseView(value)}
+                    style={[styles.segmentItem, view === value && styles.segmentOn]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: view === value }}
+                  >
+                    <Text style={[styles.segmentText, view === value && styles.segmentTextOn]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <View style={styles.shelfCard}>
+              {shelves.map((shelf, i) => (
+                <Pressable
+                  key={shelf.key}
+                  onPress={() => openShelf(shelf.key)}
+                  style={({ pressed }) => [
+                    styles.shelfRow,
+                    i > 0 && styles.divider,
+                    pressed && { backgroundColor: colors.card },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${shelf.label}, ${shelf.items.length} items`}
+                >
+                  {/* A peek at what's on the shelf */}
+                  <View style={styles.peek}>
+                    {shelf.items.slice(0, 3).map((it, n) => (
+                      <View key={it.id} style={[styles.peekIcon, n > 0 && { marginLeft: -12 }]}>
+                        <FoodIcon
+                          name={it.name}
+                          container={it.container}
+                          location={it.location}
+                          size={34}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.shelfName}>{shelf.label}</Text>
+                    <Text style={styles.shelfMeta}>
+                      {shelf.items.length} {shelf.items.length === 1 ? "item" : "items"}
+                      {shelf.soon > 0 ? (
+                        <Text style={styles.shelfSoon}> · {shelf.soon} to use soon</Text>
+                      ) : null}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textSoft} />
+                </Pressable>
+              ))}
+            </View>
+          </>
         )}
       </Animated.ScrollView>
 
@@ -181,6 +275,42 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 15, color: colors.text },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingRight: spacing.lg, // the title brings its own left padding and margins
+  },
+  seeAll: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.primary },
+  shelfCard: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+  },
+  shelfRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  peek: { flexDirection: "row", width: 34 + 2 * 22 },
+  peekIcon: { borderRadius: 13, borderWidth: 2, borderColor: colors.surface },
+  shelfName: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.text },
+  shelfMeta: { fontFamily: fonts.body, fontSize: 13, color: colors.textSoft, marginTop: 1 },
+  shelfSoon: { color: colors.soon, fontFamily: fonts.bodySemi },
+  segment: {
+    flexDirection: "row",
+    backgroundColor: colors.card,
+    borderRadius: radius.pill,
+    padding: 3,
+  },
+  segmentItem: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
+  segmentOn: { backgroundColor: colors.surface },
+  segmentText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.textSoft },
+  segmentTextOn: { color: colors.primary },
   sectionTitle: {
     fontFamily: fonts.bodyBold,
     fontSize: 12,

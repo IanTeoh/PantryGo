@@ -7,18 +7,18 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
+import { TextInput } from "@/components/TextInput";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/state/AuthContext";
 import { colors, fonts, radius, spacing } from "@/theme";
 
-type Mode = "signIn" | "signUp";
+type Mode = "signIn" | "signUp" | "forgot";
 
 export default function SignInScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, sendPasswordReset, linkError, clearLinkError } = useAuth();
 
   const [mode, setMode] = useState<Mode>("signIn");
   const [name, setName] = useState("");
@@ -26,19 +26,30 @@ export default function SignInScreen() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false); // waiting for Supabase to answer
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false); // "Check your email"
 
   const isSignUp = mode === "signUp";
+  const isForgot = mode === "forgot";
 
   // Simple checks before we even ask Supabase
   const emailOk = /^\S+@\S+\.\S+$/.test(email.trim()); // something@something.something
   const passwordOk = password.length >= 6; // Supabase's minimum
   const nameOk = !isSignUp || name.trim().length > 0;
-  const canSubmit = emailOk && passwordOk && nameOk && !busy;
+  const canSubmit = emailOk && (isForgot || passwordOk) && nameOk && !busy;
 
   async function submit() {
     if (!canSubmit) return;
     setBusy(true);
     setError(null);
+    clearLinkError();
+
+    if (isForgot) {
+      const message = await sendPasswordReset(email);
+      setBusy(false);
+      if (message) setError(friendlyError(message));
+      else setResetSent(true);
+      return;
+    }
 
     // Wait for Supabase. If it works, the AuthProvider hears about the new session
     // and the root layout swaps this screen for the tabs. We don't navigate ourselves.
@@ -49,8 +60,17 @@ export default function SignInScreen() {
   }
 
   function switchMode() {
-    setMode(isSignUp ? "signIn" : "signUp");
+    setMode(mode === "signIn" ? "signUp" : "signIn"); // from "forgot", back to sign in
     setError(null);
+    setResetSent(false);
+    clearLinkError();
+  }
+
+  function forgot() {
+    setMode("forgot");
+    setError(null);
+    setResetSent(false);
+    clearLinkError();
   }
 
   return (
@@ -67,7 +87,15 @@ export default function SignInScreen() {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.title}>{isSignUp ? "Create your account" : "Welcome back"}</Text>
+            <Text style={styles.title}>
+              {isForgot ? "Reset your password" : isSignUp ? "Create your account" : "Welcome back"}
+            </Text>
+            {isForgot && !resetSent && (
+              <Text style={styles.help}>
+                Enter the email you signed up with. We'll send a link that opens PantryGo so you can
+                choose a new password.
+              </Text>
+            )}
 
             {isSignUp && (
               <Field label="Your name">
@@ -98,22 +126,39 @@ export default function SignInScreen() {
               />
             </Field>
 
-            <Field label="Password">
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="At least 6 characters"
-                placeholderTextColor={colors.textSoft}
-                style={styles.input}
-                secureTextEntry // shows dots instead of the letters
-                textContentType={isSignUp ? "newPassword" : "password"}
-                autoComplete={isSignUp ? "new-password" : "current-password"}
-                onSubmitEditing={submit}
-                returnKeyType="go"
-              />
-            </Field>
+            {!isForgot && (
+              <Field label="Password">
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="At least 6 characters"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.input}
+                  secureTextEntry // shows dots instead of the letters
+                  textContentType={isSignUp ? "newPassword" : "password"}
+                  autoComplete={isSignUp ? "new-password" : "current-password"}
+                  onSubmitEditing={submit}
+                  returnKeyType="go"
+                />
+              </Field>
+            )}
 
-            {error && <Text style={styles.error}>{error}</Text>}
+            {!isSignUp && !isForgot && (
+              <Pressable onPress={forgot} hitSlop={8} style={styles.forgot}>
+                <Text style={styles.switchLink}>Forgot password?</Text>
+              </Pressable>
+            )}
+
+            {(error || linkError) && <Text style={styles.error}>{error ?? linkError}</Text>}
+            {resetSent && (
+              <View style={styles.sent}>
+                <Text style={styles.sentTitle}>Check your email</Text>
+                <Text style={styles.help}>
+                  If there's an account for {email.trim()}, a reset link is on its way. Open it on
+                  this phone. It can take a few minutes, so check your spam folder too.
+                </Text>
+              </View>
+            )}
 
             <Pressable
               onPress={submit}
@@ -127,15 +172,29 @@ export default function SignInScreen() {
               {busy ? (
                 <ActivityIndicator color={colors.onPrimary} /> // a spinning wheel while we wait
               ) : (
-                <Text style={styles.buttonText}>{isSignUp ? "Create account" : "Sign in"}</Text>
+                <Text style={styles.buttonText}>
+                  {isForgot
+                    ? resetSent
+                      ? "Send it again"
+                      : "Send reset link"
+                    : isSignUp
+                      ? "Create account"
+                      : "Sign in"}
+                </Text>
               )}
             </Pressable>
           </View>
 
           <Pressable onPress={switchMode} style={styles.switch}>
             <Text style={styles.switchText}>
-              {isSignUp ? "Already have an account? " : "New to PantryGo? "}
-              <Text style={styles.switchLink}>{isSignUp ? "Sign in" : "Create an account"}</Text>
+              {isForgot
+                ? "Remembered it? "
+                : isSignUp
+                  ? "Already have an account? "
+                  : "New to PantryGo? "}
+              <Text style={styles.switchLink}>
+                {isForgot ? "Back to sign in" : isSignUp ? "Sign in" : "Create an account"}
+              </Text>
             </Text>
           </Pressable>
         </ScrollView>
@@ -163,6 +222,8 @@ function friendlyError(message: string): string {
     return "There's already an account with that email. Try signing in.";
   if (m.includes("email not confirmed")) return "Check your inbox and confirm your email first.";
   if (m.includes("network")) return "Couldn't reach the server. Check your internet connection.";
+  if (m.includes("rate limit") || m.includes("security purposes"))
+    return "Too many emails sent just now. Wait a few minutes, then try again.";
   return message;
 }
 
@@ -193,6 +254,15 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   error: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.urgent },
+  help: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.textSoft },
+  forgot: { alignSelf: "flex-end", marginTop: -spacing.xs },
+  sent: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  sentTitle: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.primary },
   button: {
     backgroundColor: colors.primary,
     borderRadius: radius.pill,

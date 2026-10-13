@@ -29,6 +29,9 @@ const BY_CONTAINER: Record<ContainerType, FoodArtName> = {
   jar: "jar",
   bag: "shopping-bags",
   box: "package",
+  can: "canned-food",
+  tub: "jar",
+  packet: "package",
   countable: "package",
 };
 

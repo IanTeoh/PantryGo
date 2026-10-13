@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
+import { isAisle, type Aisle } from "@/utils/aisles";
 import { supabase } from "@/lib/supabase";
 import type { ContainerType, Item, Location, Nutrition } from "@/types";
 import { makeId } from "@/utils/ids";
@@ -41,6 +42,10 @@ type PantryContextValue = {
   removeItem: (id: string) => void; // delete from the list entirely
   updateItem: (id: string, details: ItemDetails) => void; // fix name, location, date…
   setItemNutrition: (id: string, nutrition: Nutrition | null) => void; // calories etc.
+  setItemCategory: (id: string, category: Aisle | null) => void; // its type; null = automatic
+  // Undo an activity-log entry: puts the pantry back and removes the entry.
+  // Returns an error message, or null if it worked.
+  undoEvent: (eventId: string) => Promise<string | null>;
 };
 
 // The parts of an item you can edit. (Pick<> = "just these fields of Item".)
@@ -71,6 +76,7 @@ type ItemRow = {
   protein: number | string | null;
   carbs: number | string | null;
   fat: number | string | null;
+  category?: string | null; // (missing until 16_item_types.sql has been run)
 };
 
 export type EventRow = {
@@ -96,6 +102,7 @@ function toItem(row: ItemRow): Item {
     location: row.location,
     expiry: row.expiry,
     barcode: row.barcode,
+    category: isAisle(row.category) ? row.category : null,
     // No calories = nutrition not known
     nutrition:
       row.kcal === null
@@ -244,8 +251,19 @@ export function PantryProvider({ children }: { children: ReactNode }) {
           p_barcode: newItem.barcode ?? null,
         });
         // add_item gives back the new item's id: use it to save the nutrition too
-        if (added.error || !newItem.nutrition) return added;
-        return nutritionRpc(added.data as string, newItem.nutrition);
+        if (added.error) return added;
+        const newId = added.data as string;
+        if (newItem.nutrition) {
+          const saved = await nutritionRpc(newId, newItem.nutrition);
+          if (saved.error) return saved;
+        }
+        if (newItem.category) {
+          return supabase.rpc("set_item_category", {
+            p_item_id: newId,
+            p_category: newItem.category,
+          });
+        }
+        return added;
       },
     );
   }
@@ -255,6 +273,26 @@ export function PantryProvider({ children }: { children: ReactNode }) {
       () => setItems((prev) => prev.map((it) => (it.id === id ? { ...it, nutrition } : it))),
       () => nutritionRpc(id, nutrition),
     );
+  }
+
+  function setItemCategory(id: string, category: Aisle | null) {
+    save(
+      () => setItems((prev) => prev.map((it) => (it.id === id ? { ...it, category } : it))),
+      () => supabase.rpc("set_item_category", { p_item_id: id, p_category: category }),
+    );
+  }
+
+  async function undoEvent(eventId: string) {
+    const { error } = await supabase.rpc("undo_event", { p_event_id: eventId });
+    if (error) {
+      return error.message.includes("undo_event")
+        ? "Undo isn't set up yet. Run supabase/17_undo_activity.sql in Supabase."
+        : error.message;
+    }
+    // Show the change straight away (refresh() below brings the exact numbers)
+    setEvents((prev) => prev.filter((e) => e.id !== eventId));
+    await refresh();
+    return null;
   }
 
   function discardItem(id: string) {
@@ -307,6 +345,8 @@ export function PantryProvider({ children }: { children: ReactNode }) {
     removeItem,
     updateItem,
     setItemNutrition,
+    setItemCategory,
+    undoEvent,
   };
 
   return <PantryContext.Provider value={value}>{children}</PantryContext.Provider>;

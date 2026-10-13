@@ -56,6 +56,9 @@ export const CONTAINER_OPTIONS: { value: ContainerType; label: string }[] = [
   { value: "jar", label: "Jar" },
   { value: "bag", label: "Bag" },
   { value: "box", label: "Box" },
+  { value: "can", label: "Can" },
+  { value: "tub", label: "Tub" },
+  { value: "packet", label: "Packet" },
   { value: "countable", label: "Count them" },
 ];
 
