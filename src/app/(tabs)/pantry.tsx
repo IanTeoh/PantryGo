@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { Storage } from "expo-sqlite/kv-store";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { TextInput } from "@/components/TextInput";
 
@@ -11,9 +11,11 @@ import { BigHeader } from "@/components/BigHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonRows } from "@/components/Skeleton";
 import { FoodIcon } from "@/components/FoodIcon";
+import { useFoodPictures } from "@/utils/foodPictures";
 import { ItemRow } from "@/components/ItemRow";
 import { PressableScale } from "@/components/PressableScale";
 import { sampleItems } from "@/data/sampleItems";
+import { useAuth } from "@/state/AuthContext";
 import { usePantry } from "@/state/PantryContext";
 import { colors, fonts, radius, spacing } from "@/theme";
 import type { Item } from "@/types";
@@ -38,11 +40,23 @@ const SOON_PREVIEW = 3;
 
 export default function PantryScreen() {
   // ---- Shared data: lives in PantryContext so every tab sees the same items ----
-  const { items, loading, refresh, changeQuantity, setQuantity, discardItem, addItem } =
-    usePantry();
+  const {
+    items,
+    events,
+    loading,
+    refresh,
+    changeQuantity,
+    setQuantity,
+    discardItem,
+    addItem,
+    removeItem,
+    undoEvent,
+  } = usePantry();
+  const { session } = useAuth();
 
   // ---- Local state: only this screen cares ----
   const [view, setView] = useState<ViewMode>(readView);
+  const showPictures = useFoodPictures();
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -79,10 +93,41 @@ export default function PantryScreen() {
     setRefreshing(false);
   }
 
-  // For trying the app out: put the example items into your (empty) pantry
+  // For trying the app out: put the example items into your (empty) pantry.
+  // A banner then offers to take them out again.
+  const [examples, setExamples] = useState<"none" | "added" | "undoing">("none");
   function addExamples() {
     sampleItems.forEach(({ id, ...rest }) => addItem(rest));
+    setExamples("added");
   }
+
+  // Undo: once they've all saved (no temporary ids left), undo each one's "added"
+  // entry, which deletes it without leaving "removed" entries in the activity log.
+  function undoExamples() {
+    setExamples("undoing");
+    refresh(); // fetch the saved items and their "added" entries
+  }
+  useEffect(() => {
+    if (examples !== "undoing") return;
+    const names = new Set(sampleItems.map((s) => s.name));
+    const added = items.filter((it) => names.has(it.name));
+    if (added.some((it) => it.id.startsWith("temp-"))) return; // still saving: wait
+    setExamples("none");
+    (async () => {
+      const entries = events.filter(
+        (e) =>
+          e.type === "added" &&
+          e.userId === session?.user.id &&
+          added.some((it) => it.id === e.itemId),
+      );
+      for (const e of entries) {
+        if (await undoEvent(e.id)) break; // undo isn't available: fall back below
+      }
+      // Anything still there (e.g. undo isn't set up yet): just remove it
+      const left = added.filter((it) => !entries.some((e) => e.itemId === it.id));
+      left.forEach((it) => removeItem(it.id));
+    })();
+  }, [examples, items, events, session, undoEvent, removeItem]);
 
   const row = (item: Item, index: number) => (
     // entering / exiting / layout: how each row arrives, leaves and moves
@@ -123,6 +168,32 @@ export default function PantryScreen() {
             />
           </View>
         </View>
+
+        {/* Just added the examples: offer to take them back out */}
+        {examples !== "none" && items.length > 0 && (
+          <View style={styles.examplesBar}>
+            <Ionicons name="sparkles-outline" size={18} color={colors.primary} />
+            <Text style={styles.examplesText}>
+              {examples === "undoing"
+                ? "Removing the examples…"
+                : "Example items added to try things out."}
+            </Text>
+            {examples === "added" && (
+              <>
+                <Pressable onPress={undoExamples} hitSlop={8} accessibilityRole="button">
+                  <Text style={styles.examplesUndo}>Undo</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setExamples("none")}
+                  hitSlop={8}
+                  accessibilityLabel="Keep them"
+                >
+                  <Ionicons name="close" size={18} color={colors.textSoft} />
+                </Pressable>
+              </>
+            )}
+          </View>
+        )}
 
         {loading && items.length === 0 ? (
           <SkeletonRows count={6} />
@@ -203,18 +274,20 @@ export default function PantryScreen() {
                   accessibilityLabel={`${shelf.label}, ${shelf.items.length} items`}
                 >
                   {/* A peek at what's on the shelf */}
-                  <View style={styles.peek}>
-                    {shelf.items.slice(0, 3).map((it, n) => (
-                      <View key={it.id} style={[styles.peekIcon, n > 0 && { marginLeft: -12 }]}>
-                        <FoodIcon
-                          name={it.name}
-                          container={it.container}
-                          location={it.location}
-                          size={34}
-                        />
-                      </View>
-                    ))}
-                  </View>
+                  {showPictures && (
+                    <View style={styles.peek}>
+                      {shelf.items.slice(0, 3).map((it, n) => (
+                        <View key={it.id} style={[styles.peekIcon, n > 0 && { marginLeft: -12 }]}>
+                          <FoodIcon
+                            name={it.name}
+                            container={it.container}
+                            location={it.location}
+                            size={34}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  )}
                   <View style={{ flex: 1 }}>
                     <Text style={styles.shelfName}>{shelf.label}</Text>
                     <Text style={styles.shelfMeta}>
@@ -260,6 +333,19 @@ const shadow = {
 };
 
 const styles = StyleSheet.create({
+  examplesBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  examplesText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
+  examplesUndo: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.primary },
   container: { flex: 1, backgroundColor: colors.background },
   // Extra bottom padding so the last row can scroll clear of the floating buttons
   listContent: { paddingBottom: 120 },

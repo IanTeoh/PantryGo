@@ -36,8 +36,8 @@ export const LEGAL_DOCS: Record<string, LegalDoc> = {
       {
         heading: "Households",
         body: [
-          "Anyone with a household's invite code can join it and see and change its pantry, shopping list, recipes, activity and (if it's turned on) spending. Only share the code with people you trust.",
-          "The person who creates a household is its owner and can turn features like spending on or off.",
+          "Anyone with a household's invite code can join it and see and change its pantry, shopping list, activity and (if it's turned on) spending. Only share the code with people you trust.",
+          "Anyone in a household can turn shared features like spending on or off for everyone in it. Your recipes, calorie log and settings stay your own.",
         ],
       },
       {
@@ -72,18 +72,20 @@ export const LEGAL_DOCS: Record<string, LegalDoc> = {
       {
         heading: "What we keep",
         body: [
-          "Your account: your email address and the name you choose.",
-          "Household data: pantry items, the activity log (who changed what, and when), the shopping list, recipes, and costs. Everyone in the household can see these.",
+          "Your account: your email address, the name you choose and, if you add one, your profile picture.",
+          "If you sign in with Apple or Google, we get your name, email address and (from Google) your profile picture from them. With Apple you can choose to hide your real email address. We never see your Apple or Google password.",
+          "Household data: pantry items, the activity log (who changed what, and when), the shopping list, costs, the food pictures you choose, and the household's picture. Everyone in the household can see these.",
+          "Your recipes and saved foods. These are yours: people in your household don't see them unless you share a recipe with everyone.",
           "Photos you add to recipes. These are stored as image files that anyone with the photo's exact link could open (the links are long and random), so don't use them for anything private.",
-          "Your calorie log and nutrition goals. These are private: nobody else can see them, not even people in your household.",
+          "Your calorie log, nutrition goals and food preferences. These are private: nobody else can see them, not even people in your household.",
           "People you've blocked and recipes you've reported. These are private, and only used to hide things for you and to review reports.",
-          "Settings like dark mode and reminder times are kept only on your phone.",
+          "Settings like dark mode, reminder times and food pictures are kept only on your phone.",
         ],
       },
       {
         heading: "Who can see it",
         body: [
-          "People in your households see that household's data and your name.",
+          "People in your households see that household's data, your name and your profile picture.",
           "Recipes you choose to share with everyone are visible to all PantryGo users, with your first name and the recipe's photo.",
           "Nobody else. We don't sell your data and there are no ads or tracking.",
         ],
@@ -92,6 +94,8 @@ export const LEGAL_DOCS: Record<string, LegalDoc> = {
         heading: "Where it's stored",
         body: [
           "Data is stored with Supabase, a database service, and protected by rules that only let each person reach their own households and private data.",
+          "Profile and household pictures are stored as image files that anyone with the picture's exact link could open (the links are long and random).",
+          "Sign-up and password-reset codes are emailed to you using Google's Gmail service, so Google handles your email address to deliver them.",
           "When you scan a barcode, the barcode number (not your name or anything about you) is looked up in Open Food Facts, a free public food database.",
           "Reminders are scheduled on your phone; nothing about them is sent anywhere.",
         ],
@@ -101,7 +105,7 @@ export const LEGAL_DOCS: Record<string, LegalDoc> = {
         body: [
           "Turn reminders off at any time in your profile, or in your phone's settings.",
           "Leave a household to stop sharing with it. Things you added stay with the household.",
-          "Delete your account from your profile. This removes your account, your calorie log, goals and shared recipes. Recipe photos may stay where other people saved a copy of a recipe you shared. Household items and costs you added stay with the household for the others, no longer linked to you. Households where you're the only member are deleted.",
+          "Delete your account from your profile. This removes your account, your profile picture, your recipes, your calorie log, goals and saved foods, and recipes you shared. Recipe photos may stay where other people saved a copy of a recipe you shared. Household items and costs you added stay with the household for the others, no longer linked to you. Households where you're the only member are deleted.",
           `Questions or requests: ${CONTACT}`,
         ],
       },
@@ -156,8 +160,8 @@ export const LEGAL_DOCS: Record<string, LegalDoc> = {
       {
         heading: "What's deleted",
         body: [
-          "Your account and sign-in, your name, your calorie log and nutrition goals, your food preferences, the people you've blocked, and recipes you've shared with everyone.",
-          "Households where you're the only member are deleted, with everything in them. In households you share, the owner role passes to the next person, and pantry items, shopping, recipes, activity and costs you added stay for the others without your name on them.",
+          "Your account and sign-in, your name and profile picture, your recipes, your calorie log, nutrition goals and saved foods, your food preferences, the people you've blocked, and recipes you've shared with everyone.",
+          "Households where you're the only member are deleted, with everything in them. In households you share, the owner role passes to the next person, and pantry items, shopping, activity and costs you added stay for the others without your name on them.",
           "Recipe photos may stay where someone else saved a copy of a recipe you shared.",
         ],
       },

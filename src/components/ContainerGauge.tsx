@@ -18,7 +18,7 @@ import type { ContainerType } from "@/types";
 const VIEW_W = 100;
 const VIEW_H = 160;
 
-type GaugeShape = Exclude<ContainerType, "countable">; // every type except "countable"
+type GaugeShape = Exclude<ContainerType, "countable" | "plain">; // the ones with a drawing
 
 const SHAPES: Record<
   GaugeShape,

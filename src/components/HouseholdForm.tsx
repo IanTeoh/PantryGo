@@ -32,7 +32,8 @@ export function HouseholdForm({ adding = false }: { adding?: boolean }) {
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const cleanCode = code.trim().toUpperCase();
+  // Codes are 8 letters and digits ("TA4TQSBF"); spaces and dashes are ignored
+  const cleanCode = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
   async function create() {
     if (!name.trim() || busy) return;
@@ -47,7 +48,7 @@ export function HouseholdForm({ adding = false }: { adding?: boolean }) {
   }
 
   async function join() {
-    if (cleanCode.length !== 6 || busy) return;
+    if (cleanCode.length !== 8 || busy) return;
     setBusy("join");
     setError(null);
     const message = await joinHousehold(cleanCode);
@@ -107,22 +108,22 @@ export function HouseholdForm({ adding = false }: { adding?: boolean }) {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Join with an invite code</Text>
             <Text style={styles.subtle}>
-              Ask someone in the household: it's on their Account page.
+              Ask someone in the household: it's on the household's page in the app.
             </Text>
             <TextInput
               value={code}
               onChangeText={(text) => setCode(text.toUpperCase())}
-              placeholder="ABC123"
+              placeholder="ABCD2345"
               placeholderTextColor={colors.textSoft}
               style={[styles.input, styles.codeInput]}
               autoCapitalize="characters"
               autoCorrect={false}
-              maxLength={6}
+              maxLength={9} // 8, plus room for a dash if someone types one
             />
             <PrimaryButton
               label="Join household"
               onPress={join}
-              disabled={cleanCode.length !== 6 || busy !== null}
+              disabled={cleanCode.length !== 8 || busy !== null}
               loading={busy === "join"}
             />
           </View>
@@ -200,7 +201,7 @@ const styles = StyleSheet.create({
   codeInput: {
     fontFamily: fonts.bodyBold,
     fontSize: 22,
-    letterSpacing: 6, // spaced-out letters, easier to read a code
+    letterSpacing: 4, // spaced-out letters, easier to read a code
     textAlign: "center",
   },
   or: { fontFamily: fonts.body, fontSize: 14, color: colors.textSoft, textAlign: "center" },

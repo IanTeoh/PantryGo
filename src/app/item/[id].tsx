@@ -11,6 +11,7 @@ import { ContainerGauge } from "@/components/ContainerGauge";
 import { LevelBar } from "@/components/LevelBar";
 import { CountableDots } from "@/components/CountableDots";
 import { FoodIcon } from "@/components/FoodIcon";
+import { useFoodPictures } from "@/utils/foodPictures";
 import { PressableScale } from "@/components/PressableScale";
 import { StatusPill } from "@/components/StatusPill";
 import { useNutrition } from "@/state/NutritionContext";
@@ -45,6 +46,7 @@ export default function ItemDetailScreen() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Simple level bar, or the container drawing (Profile → Appearance)
   const [view] = useState(readItemView);
+  const showPictures = useFoodPictures();
   // The last snapped amount while dragging, so each new step gives one tick
   const lastStep = useRef<number | null>(null);
 
@@ -66,6 +68,8 @@ export default function ItemDetailScreen() {
   const amount = draft ?? pending ?? item.quantity;
   const fraction = item.capacity > 0 ? Math.min(1, amount / item.capacity) : 0;
   const isCountable = item.container === "countable";
+  // "Simple bar" items always get the bar, even with container drawings switched on
+  const simple = view === "simple" || item.container === "plain";
   const history = events.filter((e) => e.itemId === item.id);
   const onList = list.some((r) => !r.done && r.itemId === item.id);
   const isOut = item.quantity === 0;
@@ -163,12 +167,31 @@ export default function ItemDetailScreen() {
 
         {/* ---- Name ---- */}
         <View style={styles.titleRow}>
-          <FoodIcon
-            name={item.name}
-            container={item.container}
-            location={item.location}
-            size={56}
-          />
+          {/* Tap the picture to choose a different one (hidden if pictures are off) */}
+          {showPictures && (
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/food-icon",
+                  params: { name: item.name, container: item.container, location: item.location },
+                })
+              }
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Change picture"
+              style={({ pressed }) => pressed && { opacity: 0.6 }}
+            >
+              <FoodIcon
+                name={item.name}
+                container={item.container}
+                location={item.location}
+                size={56}
+              />
+              <View style={styles.iconBadge}>
+                <Ionicons name="pencil" size={11} color={colors.onPrimary} />
+              </View>
+            </Pressable>
+          )}
           <View style={styles.titleTexts}>
             <Text style={styles.title}>{item.name}</Text>
             <View style={styles.chips}>
@@ -182,9 +205,7 @@ export default function ItemDetailScreen() {
         </View>
 
         {/* ---- How much is left ---- */}
-        <View
-          style={[styles.gaugeCard, (isCountable || view === "simple") && styles.gaugeCardColumn]}
-        >
+        <View style={[styles.gaugeCard, (isCountable || simple) && styles.gaugeCardColumn]}>
           {isCountable ? (
             <>
               <View style={styles.amountBlock}>
@@ -205,7 +226,7 @@ export default function ItemDetailScreen() {
                 }}
               />
             </>
-          ) : view === "simple" ? (
+          ) : simple ? (
             // Simple view: the amount, and a bar you drag
             <>
               <View style={styles.amountBlock}>
@@ -231,7 +252,11 @@ export default function ItemDetailScreen() {
           ) : (
             <>
               <ContainerGauge
-                shape={item.container === "countable" ? "box" : item.container}
+                shape={
+                  item.container === "countable" || item.container === "plain"
+                    ? "box"
+                    : item.container
+                }
                 fraction={fraction}
                 width={140}
                 color={fraction <= 0.15 ? colors.fillLow : colors.fill}
@@ -438,6 +463,19 @@ function ActionTile({
 }
 
 const styles = StyleSheet.create({
+  iconBadge: {
+    position: "absolute",
+    right: -4,
+    bottom: -4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.lg + 2, paddingBottom: spacing.xl * 2 },
   missing: {

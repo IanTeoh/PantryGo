@@ -11,7 +11,7 @@ import { EstimateBanner } from "@/components/EstimateBanner";
 import { FilterChips } from "@/components/FilterChips";
 import { SplitPicker } from "@/components/SplitPicker";
 import { NutritionFields } from "@/components/NutritionFields";
-import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/data/formOptions";
+import { LOCATION_OPTIONS } from "@/data/formOptions";
 import { useAuth } from "@/state/AuthContext";
 import { useBudget } from "@/state/BudgetContext";
 import { useHousehold } from "@/state/HouseholdContext";
@@ -29,7 +29,15 @@ import {
   type NutritionText,
 } from "@/utils/nutrition";
 import { guessLocation } from "@/utils/stock";
-import { CONTAINER_OPTIONS, formatAmount, guessContainer } from "@/utils/units";
+import {
+  CONTAINER_OPTIONS,
+  COUNT_UNITS,
+  MAIN_UNITS,
+  formatAmount,
+  guessContainer,
+  isMeasured,
+  mainUnitOf,
+} from "@/utils/units";
 
 // What happened with the last scan. Each "kind" carries the extra info it needs.
 // (This is a "discriminated union": TypeScript knows `existing` only exists when kind is "existing".)
@@ -57,7 +65,7 @@ export default function AddItemScreen() {
   const [location, setLocation] = useState<Location>("fridge");
   // "YYYY-MM-DD", or null for no date. Starts a week from today.
   const [expiry, setExpiry] = useState<string | null>(addDays(7));
-  // null = "pick for me" (guessed from the unit). Set once the person taps a shape.
+  // null = "pick for me" (guessed from the name and unit). Set once the person taps a shape.
   const [containerChoice, setContainerChoice] = useState<ContainerType | null>(null);
   const [priceText, setPriceText] = useState(""); // optional: what it cost
   // Who the price is split between: everyone to start with
@@ -79,7 +87,9 @@ export default function AddItemScreen() {
   const trimmedName = name.trim();
   const quantity = Number(quantityText.replace(",", ".")); // allow "1,5" as well as "1.5"
   const quantityOk = Number.isFinite(quantity) && quantity > 0;
-  const container = containerChoice ?? guessContainer(unit); // ?? = "if null, use this instead"
+  // ?? = "if null, use this instead": milk → carton, oil → bottle, nothing fits → a simple bar
+  const container = containerChoice ?? guessContainer(unit, trimmedName);
+  const counted = !isMeasured(unit);
   const price = Number(priceText.replace(",", ".").replace("$", ""));
   const hasPrice = priceText.trim() !== "" && Number.isFinite(price) && price > 0;
   const nutrition = parseNutrition(nutritionText);
@@ -108,6 +118,16 @@ export default function AddItemScreen() {
     CONTAINER_OPTIONS.find((o) => o.value === container)?.label +
     (containerChoice === null ? " (guessed)" : "");
   const typeLabel = aisleLabel(type === "auto" ? aisleFor(name) : type);
+  const countLabel =
+    counted && unit !== "pcs" ? COUNT_UNITS.find((u) => u.value === unit)?.label : null;
+
+  // pieces / g / ml. Tapping "pieces" keeps cans or jars if those were picked in More options.
+  // Switching between counting and measuring forgets a shape you picked, since it won't fit.
+  function chooseUnit(u: string) {
+    if (u === "pcs" && counted) return;
+    if (isMeasured(u) !== isMeasured(unit)) setContainerChoice(null);
+    setUnit(u);
+  }
 
   // Cancel: if you came here just to scan (a Scan button) and haven't scanned
   // anything yet, go back to wherever you were. Otherwise show the form.
@@ -247,7 +267,7 @@ export default function AddItemScreen() {
         />
         {!quantityOk && <Text style={styles.error}>Enter a number above 0</Text>}
       </View>
-      <FilterChips options={UNIT_OPTIONS} selected={unit} onSelect={setUnit} />
+      <FilterChips options={MAIN_UNITS} selected={mainUnitOf(unit)} onSelect={chooseUnit} />
 
       {/* Location */}
       <Text style={[styles.label, styles.padded]}>Where does it live?</Text>
@@ -317,10 +337,19 @@ export default function AddItemScreen() {
         <Collapsible
           icon="options-outline"
           title="More options"
-          summary={`${shapeLabel} · ${typeLabel}`}
+          summary={[countLabel && `Counted in ${countLabel}`, shapeLabel, typeLabel]
+            .filter(Boolean)
+            .join(" · ")}
           open={open.more}
           onToggle={() => toggle("more")}
         >
+          {/* Counting pieces: they can be cans, packs, jars or bottles instead */}
+          {counted && (
+            <>
+              <Text style={[styles.label, styles.padded]}>Count them as</Text>
+              <FilterChips options={COUNT_UNITS} selected={unit} onSelect={setUnit} />
+            </>
+          )}
           <Text style={[styles.label, styles.padded]}>Shape</Text>
           <FilterChips
             options={CONTAINER_OPTIONS}

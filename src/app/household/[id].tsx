@@ -13,9 +13,10 @@ import {
 } from "react-native";
 import Animated from "react-native-reanimated";
 
+import { Avatar } from "@/components/Avatar";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/state/AuthContext";
-import { useHousehold } from "@/state/HouseholdContext";
+import { loadProfiles, useHousehold } from "@/state/HouseholdContext";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { tick, warning } from "@/utils/haptics";
 import { rowEntering } from "@/utils/motion";
@@ -28,6 +29,7 @@ type Person = {
   name: string;
   role: "admin" | "member";
   joinedAt: number;
+  avatar: string | null;
 };
 
 type Details = {
@@ -72,17 +74,15 @@ export default function HouseholdScreen() {
       return;
     }
     const ids = (memberRows.data ?? []).map((m) => m.user_id as string);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, display_name")
-      .in("id", ids);
+    const profiles = await loadProfiles(ids);
 
     const ownerId = hh.data.created_by as string;
     const people: Person[] = (memberRows.data ?? []).map((m) => ({
       userId: m.user_id as string,
       role: m.role as "admin" | "member",
       joinedAt: Date.parse(m.joined_at as string),
-      name: profiles?.find((p) => p.id === m.user_id)?.display_name || "Someone",
+      name: profiles.find((p) => p.id === m.user_id)?.display_name || "Someone",
+      avatar: profiles.find((p) => p.id === m.user_id)?.avatar ?? null,
     }));
     // Owner first, then everyone in the order they joined
     people.sort(
@@ -138,9 +138,27 @@ export default function HouseholdScreen() {
 
       {/* ---- Title ---- */}
       <View style={styles.titleBlock}>
-        <View style={styles.bigAvatar}>
-          <Text style={styles.bigAvatarText}>{details.name.charAt(0).toUpperCase()}</Text>
-        </View>
+        {/* Its picture: tap to change (anyone in the household can) */}
+        <Pressable
+          onPress={() => {
+            tick();
+            router.push({ pathname: "/avatar", params: { household: id } });
+          }}
+          style={({ pressed }) => [styles.bigAvatar, pressed && { opacity: 0.8 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Change the household's picture"
+        >
+          <Avatar
+            name={details.name}
+            photo={households.find((h) => h.id === id)?.photo}
+            bucket="household-photos"
+            shape="rounded"
+            size={72}
+          />
+          <View style={styles.bigAvatarBadge}>
+            <Ionicons name="camera" size={13} color={colors.onPrimary} />
+          </View>
+        </Pressable>
         <Text style={styles.title}>{details.name}</Text>
         <Text style={styles.muted}>
           {details.people.length} {details.people.length === 1 ? "person" : "people"} · started{" "}
@@ -197,33 +215,30 @@ export default function HouseholdScreen() {
         </View>
       </View>
 
-      {/* ---- Features: spending on or off (the owner decides) ---- */}
+      {/* ---- Features: split costs on or off, for the whole household (anyone in it) ---- */}
       <View style={styles.section}>
         <Text style={styles.label}>FEATURES</Text>
         <View style={[styles.card, styles.featureCard]}>
           <View style={styles.featureRow}>
             <Ionicons name="wallet-outline" size={22} color={colors.primary} />
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.name}>Spending & splitting costs</Text>
+              <Text style={styles.name}>Split costs</Text>
               <Text style={styles.muted}>
-                Prices, receipt totals, the spending log and who owes whom.
-                {details.ownerId === me ? "" : " Only the owner can change this."}
+                Prices, the spending log and who owes whom. Anyone here can switch it, and it's on
+                or off for everyone.
               </Text>
             </View>
             {(() => {
               const on = households.find((h) => h.id === id)?.spendingEnabled !== false;
-              const canChange = details.ownerId === me;
               return (
                 <Pressable
                   onPress={async () => {
-                    if (!canChange) return;
                     tick();
                     setSwitchError(await setSpendingEnabled(id, !on));
                   }}
-                  disabled={!canChange}
                   accessibilityRole="switch"
-                  accessibilityState={{ checked: on, disabled: !canChange }}
-                  style={[styles.toggle, on && styles.toggleOn, !canChange && { opacity: 0.5 }]}
+                  accessibilityState={{ checked: on }}
+                  style={[styles.toggle, on && styles.toggleOn]}
                 >
                   <View style={[styles.knob, on && styles.knobOn]} />
                 </Pressable>
@@ -289,11 +304,13 @@ function PersonRow({
 }) {
   return (
     <View style={[styles.row, divider && styles.divider]}>
-      <View style={[styles.avatar, owner && styles.avatarOwner]}>
-        <Text style={[styles.avatarText, owner && styles.avatarTextOwner]}>
-          {person.name.charAt(0).toUpperCase()}
-        </Text>
-      </View>
+      <Avatar
+        name={person.name}
+        photo={person.avatar}
+        size={40}
+        background={owner ? colors.primary : colors.card}
+        color={owner ? colors.onPrimary : colors.primary}
+      />
       <View style={{ flex: 1 }}>
         <Text style={styles.name}>
           {person.name}
@@ -326,16 +343,20 @@ const styles = StyleSheet.create({
   muted: { fontFamily: fonts.body, fontSize: 13, color: colors.textSoft },
 
   titleBlock: { alignItems: "center", gap: 6 },
-  bigAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
+  bigAvatar: { marginBottom: spacing.xs },
+  bigAvatarBadge: {
+    position: "absolute",
+    right: -4,
+    bottom: -4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.xs,
   },
-  bigAvatarText: { fontFamily: fonts.heading, fontSize: 32, color: colors.onPrimary },
   title: { fontFamily: fonts.heading, fontSize: 28, color: colors.text, textAlign: "center" },
   currentTag: {
     marginTop: spacing.xs,
@@ -365,17 +386,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingHorizontal: spacing.md },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
   divider: { borderTopWidth: 1, borderTopColor: colors.border },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.card,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarOwner: { backgroundColor: colors.primary },
-  avatarText: { fontFamily: fonts.heading, fontSize: 17, color: colors.primary },
-  avatarTextOwner: { color: colors.onPrimary },
   name: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.text },
   you: { fontFamily: fonts.body, color: colors.textSoft },
   ownerBadge: {
@@ -405,7 +415,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  code: { fontFamily: fonts.bodyBold, fontSize: 30, letterSpacing: 8, color: colors.primary },
+  code: { fontFamily: fonts.bodyBold, fontSize: 30, letterSpacing: 5, color: colors.primary },
   shareButton: {
     flexDirection: "row",
     alignItems: "center",

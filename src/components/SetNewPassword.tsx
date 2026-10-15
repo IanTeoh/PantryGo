@@ -17,7 +17,7 @@ import { colors, fonts, radius, spacing } from "@/theme";
 import { success } from "@/utils/haptics";
 
 // Shown when the app is opened from a password-reset email (see AuthContext).
-// The link has already signed you in; this sets the new password.
+// The emailed code (or link) has already signed you in; this sets the new password.
 export function SetNewPassword() {
   const { setNewPassword, cancelRecovery, session } = useAuth();
   const [password, setPassword] = useState("");
@@ -27,7 +27,7 @@ export function SetNewPassword() {
 
   const longEnough = password.length >= 6;
   const matches = password === again;
-  const ready = session !== null; // the link's sign-in has landed
+  const ready = session !== null; // the code's sign-in has landed
   const canSave = longEnough && matches && ready && !busy;
 
   async function save() {

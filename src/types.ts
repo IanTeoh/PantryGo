@@ -4,8 +4,9 @@ export type Location = "pantry" | "fridge" | "freezer";
 
 // What shape to draw on the item's detail screen.
 // "countable" = things you count (eggs, cans) instead of pour or scoop.
+// "plain": no particular shape, just a simple bar. "countable": pieces you count.
 export type ContainerType =
-  "bottle" | "carton" | "jar" | "bag" | "box" | "can" | "tub" | "packet" | "countable";
+  "plain" | "bottle" | "carton" | "jar" | "bag" | "box" | "can" | "tub" | "packet" | "countable";
 
 export type Item = {
   id: string;

@@ -202,7 +202,7 @@ export function ShoppingProvider({ children }: { children: ReactNode }) {
           quantity: entry.amount,
           capacity: entry.amount,
           unit: entry.unit,
-          container: guessContainer(entry.unit),
+          container: guessContainer(entry.unit, row.name),
           location: entry.location,
           expiry: entry.expiry,
         });

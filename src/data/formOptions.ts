@@ -8,7 +8,3 @@ export const LOCATION_OPTIONS: { value: Location; label: string }[] = [
   { value: "freezer", label: "Freezer" },
   { value: "pantry", label: "Pantry" },
 ];
-
-export const UNIT_OPTIONS = ["pcs", "g", "kg", "ml", "L", "can", "pack", "jar", "bottle"].map(
-  (u) => ({ value: u, label: u }),
-);

@@ -6,9 +6,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { FoodArt } from "@/components/FoodIcon";
 import { FoodStep } from "@/components/onboarding/FoodStep";
 import { GoalsStep } from "@/components/onboarding/GoalsStep";
+import { WelcomeSlides } from "@/components/onboarding/WelcomeSlides";
 import { PressableScale } from "@/components/PressableScale";
 import { useAuth } from "@/state/AuthContext";
 import { useHousehold } from "@/state/HouseholdContext";
@@ -16,10 +16,12 @@ import { usePreferences } from "@/state/PreferencesContext";
 import { useReminders } from "@/state/RemindersContext";
 import { colors, fonts, radius, saveThemeChoice, spacing, themeChoice, tints } from "@/theme";
 import { success, tick } from "@/utils/haptics";
+import { setFoodPictures, useFoodPictures } from "@/utils/foodPictures";
 import { readItemView, saveItemView, type ItemView } from "@/utils/itemView";
+import { myName } from "@/utils/me";
 
 // The setup flow, shown once after you first join a household.
-//   welcome → food you like → calorie goals (optional) → reminders → done
+//   welcome slides → food you like → extras & look → calorie goals (optional) → reminders → done
 // Every step can be skipped. Finishing (or "Skip setup") marks you as set up, so
 // it never shows again; everything here can be changed later in Profile.
 
@@ -52,7 +54,6 @@ export default function OnboardingScreen() {
   const { household } = useHousehold();
   const { prefs, savePrefs, finishOnboarding } = usePreferences();
   const { setSpendingEnabled } = useHousehold();
-  const isOwner = household?.ownerId === session?.user.id;
   const spendingOn = household?.spendingEnabled !== false;
   const { turnOn, updatePrefs } = useReminders();
 
@@ -63,6 +64,7 @@ export default function OnboardingScreen() {
   // when you finish, because switching theme restarts the app (and this screen).
   const [itemView, setItemView] = useState<ItemView>(readItemView);
   const [dark, setDark] = useState(themeChoice === "dark");
+  const foodPictures = useFoodPictures();
 
   // The calorie-goals step only shows if you've switched calories on
   const steps = STEPS.filter((s) => s !== "goals" || prefs.trackCalories);
@@ -71,8 +73,7 @@ export default function OnboardingScreen() {
   const back = () => setStep(steps[Math.max(index - 1, 0)]);
   const middleCount = steps.length - 2; // without welcome and done
 
-  const firstName =
-    (session?.user.user_metadata?.display_name as string | undefined)?.split(" ")[0] ?? "";
+  const firstName = myName(session?.user).split(" ")[0];
 
   async function enableReminders() {
     const state = await turnOn();
@@ -97,6 +98,15 @@ export default function OnboardingScreen() {
 
   // The middle steps get a header with back, progress and "Skip setup"
   const middle = step !== "welcome" && step !== "done";
+
+  // The start: four slides on what PantryGo does, full width (outside the scroller below)
+  if (step === "welcome") {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <WelcomeSlides firstName={firstName} onStart={next} onSkipSetup={finish} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -135,29 +145,6 @@ export default function OnboardingScreen() {
             </View>
           )}
 
-          {step === "welcome" && (
-            <View style={styles.hero}>
-              <View style={styles.artRow}>
-                <FoodArt art="carrot" size={52} />
-                <FoodArt art="cheese-wedge" size={52} />
-                <FoodArt art="bread" size={52} />
-              </View>
-              <Text style={styles.heroTitle}>
-                {firstName ? `Welcome, ${firstName}!` : "Welcome to PantryGo!"}
-              </Text>
-              <Text style={styles.heroSub}>
-                {household ? `You're in ${household.name}. ` : ""}A few quick questions to set
-                things up for you. It takes about a minute, and you can skip anything.
-              </Text>
-              <PressableScale scaleTo={0.97} onPress={next} style={styles.button}>
-                <Text style={styles.buttonText}>Let's go</Text>
-              </PressableScale>
-              <Pressable onPress={finish} style={styles.textButton} hitSlop={8}>
-                <Text style={styles.textButtonText}>Skip, I'll set up later</Text>
-              </Pressable>
-            </View>
-          )}
-
           {step === "food" && <FoodStep onDone={next} />}
 
           {step === "extras" && (
@@ -173,17 +160,19 @@ export default function OnboardingScreen() {
                 <ExtraCard
                   icon="wallet-outline"
                   title="Split costs"
-                  text={
-                    isOwner
-                      ? `Add what things cost and see who owes whom in ${household.name}.`
-                      : `${spendingOn ? "On" : "Off"} in ${household.name}. Only the household's owner can change it.`
-                  }
+                  text={`Add what things cost and see who owes whom. Switches it on for everyone in ${household.name}.`}
                   on={spendingOn}
-                  disabled={!isOwner}
                   onToggle={() => setSpendingEnabled(household.id, !spendingOn)}
                 />
               )}
               <Text style={styles.groupLabel}>Look</Text>
+              <ExtraCard
+                icon="image-outline"
+                title="Food pictures"
+                text="A little drawing next to each food, like a carrot or a carton of milk."
+                on={foodPictures}
+                onToggle={() => setFoodPictures(!foodPictures)}
+              />
               <ExtraCard
                 icon="cube-outline"
                 title="Container drawings"

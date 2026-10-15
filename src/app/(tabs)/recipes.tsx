@@ -1,10 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { TextInput } from "@/components/TextInput";
 
-import Animated from "react-native-reanimated";
+import Animated, { LayoutAnimationConfig } from "react-native-reanimated";
 
 import { BigHeader } from "@/components/BigHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -27,6 +27,9 @@ type Section = "mine" | "discover";
 
 export default function RecipesScreen() {
   const [section, setSection] = useState<Section>("mine");
+  // The switch moves the moment you tap; the (heavier) list follows a beat later,
+  // so tapping Discover never feels stuck
+  const shownSection = useDeferredValue(section);
   const { recipes, refresh } = useRecipes();
   const community = useCommunity();
   const { items } = usePantry();
@@ -45,7 +48,6 @@ export default function RecipesScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        stickyHeaderIndices={[1]} // keep the My recipes / Discover switch at the top
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <BigHeader
@@ -55,11 +57,16 @@ export default function RecipesScreen() {
         <View style={styles.switchWrap}>
           <Segmented value={section} onChange={setSection} />
         </View>
-        {section === "mine" ? (
-          <MyRecipes onDiscover={() => setSection("discover")} />
-        ) : (
-          <Discover />
-        )}
+        {/* skipEntering: when you switch, a whole screen of cards appears at once instead
+            of each one fading in (key: starts afresh on each switch). Filtering later
+            still animates. */}
+        <LayoutAnimationConfig key={shownSection} skipEntering>
+          {shownSection === "mine" ? (
+            <MyRecipes onDiscover={() => setSection("discover")} />
+          ) : (
+            <Discover />
+          )}
+        </LayoutAnimationConfig>
       </ScrollView>
 
       <PressableScale scaleTo={0.92} onPress={() => router.push("/recipe-edit")} style={styles.fab}>
@@ -101,7 +108,7 @@ function Segmented({ value, onChange }: { value: Section; onChange: (s: Section)
 }
 
 // ---------------------------------------------------------------------------
-// My recipes: your household's book, most makeable first
+// My recipes: your own book, most makeable first
 // ---------------------------------------------------------------------------
 function MyRecipes({ onDiscover }: { onDiscover: () => void }) {
   const { recipes, loading } = useRecipes();
@@ -180,7 +187,8 @@ function Discover() {
   const [tag, setTag] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
 
-  const q = search.trim().toLowerCase();
+  // Typing stays quick: the cards catch up a moment after each letter
+  const q = useDeferredValue(search).trim().toLowerCase();
   const filtered = community.recipes.filter(
     (r) =>
       (tag === "all" || r.tags.includes(tag)) &&

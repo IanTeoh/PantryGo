@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Avatar } from "@/components/Avatar";
 import { PressableScale } from "@/components/PressableScale";
 import { useHousehold } from "@/state/HouseholdContext";
 import { colors, fonts, radius, spacing } from "@/theme";
@@ -37,11 +38,15 @@ export function HouseholdSwitcher({ visible, onClose }: { visible: boolean; onCl
               accessibilityRole="button"
               accessibilityState={{ selected: current }}
             >
-              <View style={[styles.avatar, current && styles.avatarOn]}>
-                <Text style={[styles.avatarText, current && styles.avatarTextOn]}>
-                  {h.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <Avatar
+                name={h.name}
+                photo={h.photo}
+                bucket="household-photos"
+                shape="rounded"
+                size={40}
+                background={current ? colors.primary : colors.card}
+                color={current ? colors.onPrimary : colors.primary}
+              />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{h.name}</Text>
                 <Text style={styles.meta}>
@@ -109,17 +114,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   rowOn: { backgroundColor: colors.primarySoft },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: colors.card,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarOn: { backgroundColor: colors.primary },
-  avatarText: { fontFamily: fonts.heading, fontSize: 18, color: colors.primary },
-  avatarTextOn: { color: colors.onPrimary },
   name: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.text },
   meta: { fontFamily: fonts.body, fontSize: 12, color: colors.textSoft },
   peopleButton: { padding: 4 },

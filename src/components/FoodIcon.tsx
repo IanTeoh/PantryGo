@@ -3,9 +3,11 @@ import { View } from "react-native";
 import { SvgAst, parse } from "react-native-svg";
 
 import { FOOD_ART, FOOD_ART_SIZE, type FoodArtName } from "@/data/foodArt";
+import { useFoodIcons } from "@/state/FoodIconsContext";
 import { colors } from "@/theme";
 import type { ContainerType, Location } from "@/types";
 import { artForName, pickArt } from "@/utils/foodArt";
+import { useFoodPictures } from "@/utils/foodPictures";
 
 export { artForName, pickArt }; // so screens can keep importing them from here
 
@@ -41,7 +43,9 @@ const TILE: Record<Location, string> = {
   pantry: colors.tilePantry,
 };
 
-// A rounded tile with a food drawing on it, e.g. a glass of milk on pale blue
+// A rounded tile with a food drawing on it, e.g. a glass of milk on pale blue.
+// Uses the drawing your household picked for this name if there is one, else a guess.
+// Draws nothing at all if food pictures are switched off (Profile → Features).
 export function FoodIcon({
   name,
   container,
@@ -53,6 +57,10 @@ export function FoodIcon({
   location: Location;
   size?: number;
 }) {
+  const show = useFoodPictures();
+  const { chosenArt } = useFoodIcons();
+  if (!show) return null;
+  const art = chosenArt(name) ?? pickArt(name, container, location);
   return (
     <View
       style={{
@@ -64,7 +72,7 @@ export function FoodIcon({
         justifyContent: "center",
       }}
     >
-      <FoodArt art={pickArt(name, container, location)} size={size * 0.64} />
+      <FoodArt art={art} size={size * 0.64} />
     </View>
   );
 }

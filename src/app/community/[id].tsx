@@ -1,10 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Linking from "expo-linking";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { FilterChips } from "@/components/FilterChips";
 import { RecipeView, recipeButtonStyles as b } from "@/components/RecipeView";
+import { CONTACT_EMAIL } from "@/data/legal";
 import { useAuth } from "@/state/AuthContext";
 import { useCommunity } from "@/state/CommunityContext";
 import { useRecipes } from "@/state/RecipesContext";
@@ -151,7 +153,7 @@ export default function CommunityRecipeScreen() {
             <Text style={styles.muted}>
               {myCopy
                 ? "Your copy is yours to change. Edits don't affect the shared one."
-                : "Saving copies it into your household's recipe book, where you can cook it from your pantry and tweak it."}
+                : "Saving copies it into your recipes, where you can cook it from your pantry and tweak it."}
             </Text>
             {error && <Text style={styles.error}>{error}</Text>}
           </>
@@ -209,6 +211,26 @@ export default function CommunityRecipeScreen() {
             <Text style={styles.muted}>
               You shared this. To change or stop sharing it, edit it in My recipes.
             </Text>
+          ) : isStarter ? (
+            // PantryGo's own recipes: nobody to block, but mistakes can be pointed out
+            <View style={styles.footnote}>
+              <Pressable
+                onPress={() =>
+                  Linking.openURL(
+                    `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
+                      `Problem with the recipe "${recipe.title}"`,
+                    )}`,
+                  )
+                }
+                style={b.small}
+                accessibilityRole="button"
+              >
+                <Text style={b.smallText}>
+                  <Ionicons name="mail-outline" size={13} color={colors.textSoft} /> Spot a mistake?
+                  Tell us
+                </Text>
+              </Pressable>
+            </View>
           ) : null
         }
       />

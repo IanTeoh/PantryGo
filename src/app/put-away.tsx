@@ -9,7 +9,7 @@ import { FilterChips } from "@/components/FilterChips";
 import { SplitPicker } from "@/components/SplitPicker";
 import { FoodIcon } from "@/components/FoodIcon";
 import { PressableScale } from "@/components/PressableScale";
-import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/data/formOptions";
+import { LOCATION_OPTIONS } from "@/data/formOptions";
 import { useBudget } from "@/state/BudgetContext";
 import { useHousehold } from "@/state/HouseholdContext";
 import { usePantry } from "@/state/PantryContext";
@@ -25,7 +25,7 @@ import { aisleFor } from "@/utils/aisles";
 import { bestFoodMatch } from "@/utils/foodMatch";
 import { success, tick } from "@/utils/haptics";
 import { guessLocation } from "@/utils/stock";
-import { formatAmount } from "@/utils/units";
+import { MAIN_UNITS, formatAmount, unitChips } from "@/utils/units";
 
 // "Put away": opened from the shopping list once things are in the trolley.
 // For each one, confirm how much you bought (and where it goes, and its use-by date),
@@ -194,7 +194,7 @@ export default function PutAwayScreen() {
                   </View>
                   {!existing && (
                     <FilterChips
-                      options={UNIT_OPTIONS}
+                      options={unitChips(MAIN_UNITS, d.unit)}
                       selected={d.unit}
                       onSelect={(u) => change(row.id, { unit: u })}
                     />

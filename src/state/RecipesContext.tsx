@@ -11,6 +11,7 @@ import {
 } from "@/utils/recipes";
 import { roundAmount } from "@/utils/units";
 
+import { useAuth } from "./AuthContext";
 import { useHousehold } from "./HouseholdContext";
 import { usePantry } from "./PantryContext";
 import { useLiveUpdates } from "./useLiveUpdates";
@@ -120,52 +121,63 @@ function fromDraft(
 }
 
 export function RecipesProvider({ children }: { children: ReactNode }) {
+  const { session } = useAuth();
   const { household } = useHousehold();
   const householdId = household?.id ?? null;
+  // Recipes are yours, not the household's (see supabase/22_personal_recipes.sql):
+  // they follow you between households. Cooking uses the household you're in.
+  const userId = session?.user.id ?? null;
   const { items, setQuantity } = usePantry();
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
-  async function load(forHousehold: string) {
+  async function load(forUser: string) {
     const { data, error } = await supabase
       .from("recipes")
       .select("*")
-      .eq("household_id", forHousehold)
+      .eq("created_by", forUser)
       .order("title");
     if (isSaving()) return;
     if (error) console.warn("Couldn't load recipes:", error.message);
     else setRecipes((data as RecipeRow[]).map(toRecipe));
-    setLoadedFor(forHousehold);
+    setLoadedFor(forUser);
   }
 
   useEffect(() => {
-    if (householdId === null) {
+    if (userId === null) {
       setRecipes([]);
       setLoadedFor(null);
       return;
     }
-    load(householdId);
-  }, [householdId]);
+    load(userId);
+  }, [userId]);
 
   async function refresh() {
-    if (householdId) await load(householdId);
+    if (userId) await load(userId);
   }
 
   const { save, isSaving } = useSaveQueue(refresh);
-  useLiveUpdates("recipes", ["recipes"], householdId, () => {
-    if (!isSaving()) refresh();
-  });
+  // Your recipes changing on another of your phones
+  useLiveUpdates(
+    "recipes",
+    ["recipes"],
+    userId,
+    () => {
+      if (!isSaving()) refresh();
+    },
+    "created_by",
+  );
 
   function addRecipe(draft: RecipeDraft): string {
     // Make the real id here, so the app can open the new recipe straight away
     // and it keeps the same id once saved.
     const id = makeUuid();
-    if (!householdId) return id;
+    if (!userId) return id;
     const recipe: Recipe = {
       ...fromDraft(draft),
       id,
-      createdBy: null,
+      createdBy: userId,
       createdAt: Date.now(),
       publishedId: null,
       savedFrom: null,
@@ -230,7 +242,7 @@ export function RecipesProvider({ children }: { children: ReactNode }) {
     <RecipesContext.Provider
       value={{
         recipes,
-        loading: householdId !== null && loadedFor !== householdId,
+        loading: userId !== null && loadedFor !== userId,
         refresh,
         addRecipe,
         updateRecipe,

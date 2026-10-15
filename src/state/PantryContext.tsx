@@ -148,6 +148,12 @@ function nutritionRpc(id: string, n: Nutrition | null) {
 // ---------------------------------------------------------------------------
 // The Provider
 // ---------------------------------------------------------------------------
+// "Simple bar" needs supabase/23_simple_bar.sql. Until that's run the database
+// refuses it, so save the item with a bag shape instead of losing it.
+function shapeNotKnownYet(error: { message: string } | null, container: ContainerType): boolean {
+  return error !== null && container === "plain" && error.message.includes("container");
+}
+
 export function PantryProvider({ children }: { children: ReactNode }) {
   const { household } = useHousehold();
   const householdId = household?.id ?? null;
@@ -239,17 +245,20 @@ export function PantryProvider({ children }: { children: ReactNode }) {
     save(
       () => setItems((prev) => [...prev, { ...newItem, id: tempId }]),
       async () => {
-        const added = await supabase.rpc("add_item", {
-          p_household_id: householdId,
-          p_name: newItem.name,
-          p_quantity: newItem.quantity,
-          p_capacity: newItem.capacity,
-          p_unit: newItem.unit,
-          p_container: newItem.container,
-          p_location: newItem.location,
-          p_expiry: newItem.expiry,
-          p_barcode: newItem.barcode ?? null,
-        });
+        const send = (container: ContainerType) =>
+          supabase.rpc("add_item", {
+            p_household_id: householdId,
+            p_name: newItem.name,
+            p_quantity: newItem.quantity,
+            p_capacity: newItem.capacity,
+            p_unit: newItem.unit,
+            p_container: container,
+            p_location: newItem.location,
+            p_expiry: newItem.expiry,
+            p_barcode: newItem.barcode ?? null,
+          });
+        let added = await send(newItem.container);
+        if (shapeNotKnownYet(added.error, newItem.container)) added = await send("bag");
         // add_item gives back the new item's id: use it to save the nutrition too
         if (added.error) return added;
         const newId = added.data as string;
@@ -319,16 +328,20 @@ export function PantryProvider({ children }: { children: ReactNode }) {
               : it,
           ),
         ),
-      () =>
-        supabase.rpc("update_item", {
-          p_item_id: id,
-          p_name: details.name,
-          p_unit: details.unit,
-          p_container: details.container,
-          p_location: details.location,
-          p_expiry: details.expiry,
-          p_capacity: details.capacity,
-        }),
+      async () => {
+        const send = (container: ContainerType) =>
+          supabase.rpc("update_item", {
+            p_item_id: id,
+            p_name: details.name,
+            p_unit: details.unit,
+            p_container: container,
+            p_location: details.location,
+            p_expiry: details.expiry,
+            p_capacity: details.capacity,
+          });
+        const updated = await send(details.container);
+        return shapeNotKnownYet(updated.error, details.container) ? send("bag") : updated;
+      },
     );
   }
 

@@ -7,7 +7,7 @@ import { ExpiryPicker } from "@/components/ExpiryPicker";
 import { EstimateBanner } from "@/components/EstimateBanner";
 import { FilterChips } from "@/components/FilterChips";
 import { NutritionFields } from "@/components/NutritionFields";
-import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/data/formOptions";
+import { LOCATION_OPTIONS } from "@/data/formOptions";
 import { usePantry } from "@/state/PantryContext";
 import { colors, fonts, radius, spacing } from "@/theme";
 import type { ContainerType, Item, Location } from "@/types";
@@ -18,7 +18,7 @@ import {
   type NutritionText,
 } from "@/utils/nutrition";
 import { AISLES, aisleFor, aisleLabel, type Aisle } from "@/utils/aisles";
-import { CONTAINER_OPTIONS, formatAmount } from "@/utils/units";
+import { ALL_UNITS, CONTAINER_OPTIONS, formatAmount, unitChips } from "@/utils/units";
 
 // /edit-item/8 → edit item 8. Opened from the Edit button on an item's page.
 export default function EditItemScreen() {
@@ -108,7 +108,7 @@ function EditForm({ item }: { item: Item }) {
           </Text>
         )}
       </View>
-      <FilterChips options={UNIT_OPTIONS} selected={unit} onSelect={setUnit} />
+      <FilterChips options={unitChips(ALL_UNITS, item.unit)} selected={unit} onSelect={setUnit} />
 
       <Text style={[styles.label, styles.padded]}>Shape</Text>
       <FilterChips options={CONTAINER_OPTIONS} selected={container} onSelect={setContainer} />

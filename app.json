@@ -12,7 +12,8 @@
       "supportsTablet": false,
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -34,12 +35,13 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F3F6F2",
+          "backgroundColor": "#1E5C45",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 160
+          "imageWidth": 200
         }
       ],
       [
@@ -60,8 +62,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "PantryGo uses your photos so you can add a picture to a recipe.",
-          "cameraPermission": "PantryGo uses the camera to scan barcodes and take recipe photos."
+          "photosPermission": "PantryGo uses your photos so you can add a picture to a recipe or your profile.",
+          "cameraPermission": "PantryGo uses the camera to scan barcodes and take recipe and profile photos."
         }
       ]
     ],

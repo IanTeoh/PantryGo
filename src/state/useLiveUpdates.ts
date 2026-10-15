@@ -6,11 +6,14 @@ import { makeId } from "@/utils/ids";
 
 // A custom hook: call `onChange` whenever any of these tables change for this household,
 // on ANY phone. Returns whether we're connected right now (for the "Live" dot).
+// `column`: which column `householdId` is matched against. Usually household_id, but
+// recipes are per person, so they listen on created_by with your user id instead.
 export function useLiveUpdates(
   channelName: string,
   tables: string[],
   householdId: string | null,
   onChange: () => void,
+  column = "household_id",
 ): boolean {
   const [live, setLive] = useState(false);
   // A name only this use of the hook has. Two screens listening to the same thing
@@ -41,12 +44,12 @@ export function useLiveUpdates(
         // New and edited rows, only for this household
         .on(
           "postgres_changes",
-          { event: "INSERT", schema: "public", table, filter: `household_id=eq.${householdId}` },
+          { event: "INSERT", schema: "public", table, filter: `${column}=eq.${householdId}` },
           changed,
         )
         .on(
           "postgres_changes",
-          { event: "UPDATE", schema: "public", table, filter: `household_id=eq.${householdId}` },
+          { event: "UPDATE", schema: "public", table, filter: `${column}=eq.${householdId}` },
           changed,
         )
         // Supabase can't filter deletions by household (a deleted row only reports its id),
@@ -68,7 +71,7 @@ export function useLiveUpdates(
       setLive(false);
     };
     // tables.join(): compare the list by its contents, not as a new array each render
-  }, [channelName, tables.join(","), householdId, instance]);
+  }, [channelName, tables.join(","), householdId, column, instance]);
 
   return live;
 }

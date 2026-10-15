@@ -35,8 +35,8 @@ export function splitOf(e: Expense, memberIds: string[]): string[] {
 }
 
 // Everyone's balance. Positive = the household owes you; negative = you owe.
-//   Shared purchase of $60 by Ian, 3 people: Ian +60, everyone (Ian too) −20 → Ian +40, others −20
-//   Settlement of $20 from Sam to Ian: Sam +20, Ian −20
+//   Shared purchase of $60 by Alex, 3 people: Alex +60, everyone (Alex too) −20 → Alex +40, others −20
+//   Settlement of $20 from Sam to Alex: Sam +20, Alex −20
 export function balances(expenses: Expense[], memberIds: string[]): Map<string, number> {
   const result = new Map<string, number>(memberIds.map((id) => [id, 0]));
   const add = (id: string | null, amount: number) => {

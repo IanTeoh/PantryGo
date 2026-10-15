@@ -2,6 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/state/AuthContext";
 import { useHousehold } from "@/state/HouseholdContext";
 import type { PantryEvent } from "@/state/PantryContext";
@@ -9,7 +10,7 @@ import { colors, fonts, radius, spacing } from "@/theme";
 import { describeEvent } from "@/utils/describeEvent";
 import { timeAgo } from "@/utils/timeAgo";
 
-// Soft tile colours for people's initials, so each housemate has their own
+// Soft tile colours for people's initials (when they have no photo), so each housemate has their own
 const AVATAR_TONES = [
   { bg: colors.tileFridge, fg: colors.iconFridge },
   { bg: colors.tilePantry, fg: colors.iconPantry },
@@ -25,15 +26,17 @@ export function ActivityList({ events, emptyText }: { events: PantryEvent[]; emp
   const me = session?.user.id;
 
   function person(userId: string | null) {
-    if (userId === null) return { name: "Someone", initial: "?", isMe: false, index: 0 };
+    if (userId === null)
+      return { name: "Someone", realName: "?", avatar: null, isMe: false, index: 0 };
     const index = Math.max(
       0,
       members.findIndex((m) => m.userId === userId),
     );
     const name =
       userId === me ? "You" : (members.find((m) => m.userId === userId)?.name ?? "Someone");
-    const realName = members.find((m) => m.userId === userId)?.name ?? name;
-    return { name, initial: realName.charAt(0).toUpperCase(), isMe: userId === me, index };
+    const member = members.find((m) => m.userId === userId);
+    const realName = member?.name ?? name;
+    return { name, realName, avatar: member?.avatar ?? null, isMe: userId === me, index };
   }
 
   return (
@@ -56,16 +59,14 @@ export function ActivityList({ events, emptyText }: { events: PantryEvent[]; emp
               accessibilityRole="button"
               accessibilityHint="Shows the details, and lets you undo it"
             >
-              <View
-                style={[
-                  styles.avatar,
-                  p.isMe ? { backgroundColor: colors.primary } : { backgroundColor: tone.bg },
-                ]}
-              >
-                <Text style={[styles.avatarText, { color: p.isMe ? colors.onPrimary : tone.fg }]}>
-                  {p.initial}
-                </Text>
-              </View>
+              <Avatar
+                name={p.realName}
+                photo={p.avatar}
+                size={32}
+                background={p.isMe ? colors.primary : tone.bg}
+                color={p.isMe ? colors.onPrimary : tone.fg}
+                font={fonts.bodyBold}
+              />
               <View style={styles.texts}>
                 <Text style={styles.text}>{describeEvent(event)}</Text>
                 <Text style={styles.meta}>
@@ -96,14 +97,6 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   texts: { flex: 1, gap: 2 },
   text: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
   meta: { fontFamily: fonts.body, fontSize: 12, color: colors.textSoft },

@@ -13,12 +13,14 @@ export type Household = {
   role: "admin" | "member"; // my role in it
   ownerId: string; // who made it
   spendingEnabled: boolean; // is the Spending feature on for this household?
+  photo: string | null; // its picture: a file in "household-photos", a drawing ("art:…"), or none
 };
 
 export type Member = {
   userId: string;
   name: string;
   role: "admin" | "member";
+  avatar: string | null; // profile photo (a path in the avatars bucket or a link), or none
 };
 
 type HouseholdContextValue = {
@@ -67,6 +69,7 @@ type MembershipRow = {
     invite_code: string;
     created_by: string;
     spending_enabled: boolean | null;
+    photo?: string | null;
   } | null;
 };
 
@@ -96,9 +99,12 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
         .select(`role, households(${columns})`)
         .eq("user_id", forUser)
         .order("joined_at", { ascending: true });
-    let { data, error } = await query("id, name, invite_code, created_by, spending_enabled");
-    // Before 10_spending.sql has been run there's no spending_enabled column yet:
-    // ask again without it, so the app keeps working
+    let { data, error } = await query("id, name, invite_code, created_by, spending_enabled, photo");
+    // Before 28_household_photos.sql has been run there's no photo column yet, and
+    // before 10_spending.sql no spending_enabled: ask again without them
+    if (error?.message.includes("photo")) {
+      ({ data, error } = await query("id, name, invite_code, created_by, spending_enabled"));
+    }
     if (error?.message.includes("spending_enabled")) {
       ({ data, error } = await query("id, name, invite_code, created_by"));
     }
@@ -119,6 +125,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
         role: row.role,
         ownerId: row.households!.created_by,
         spendingEnabled: row.households!.spending_enabled ?? true, // true until 10_spending.sql is run
+        photo: row.households!.photo ?? null,
       }));
     setHouseholds(mine);
 
@@ -150,18 +157,19 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
       .select("user_id, role")
       .eq("household_id", householdId);
     const ids = (memberRows ?? []).map((m) => m.user_id as string);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, display_name")
-      .in("id", ids);
+    const profiles = await loadProfiles(ids);
     if (request !== membersRequest.current) return; // a newer switch happened meanwhile
 
     setMembers(
-      (memberRows ?? []).map((m) => ({
-        userId: m.user_id as string,
-        role: m.role as "admin" | "member",
-        name: (profiles ?? []).find((p) => p.id === m.user_id)?.display_name || "Someone",
-      })),
+      (memberRows ?? []).map((m) => {
+        const p = profiles.find((x) => x.id === m.user_id);
+        return {
+          userId: m.user_id as string,
+          role: m.role as "admin" | "member",
+          name: p?.display_name || "Someone",
+          avatar: p?.avatar ?? null,
+        };
+      }),
     );
   }
 
@@ -241,7 +249,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   }
 
   async function setSpendingEnabled(householdId: string, enabled: boolean) {
-    // Show the change straight away, then save it (the database checks you're the owner)
+    // Show the change straight away, then save it (the database checks you're in the household)
     setHouseholds((prev) =>
       prev.map((h) => (h.id === householdId ? { ...h, spendingEnabled: enabled } : h)),
     );
@@ -279,4 +287,19 @@ export function useHousehold(): HouseholdContextValue {
   const value = useContext(HouseholdContext);
   if (value === null) throw new Error("useHousehold() must be used inside <HouseholdProvider>");
   return value;
+}
+
+// People's names and photos. Falls back to names only if the photo column isn't
+// there yet (27_avatars_and_social.sql not run), so nothing breaks in between.
+export async function loadProfiles(
+  ids: string[],
+): Promise<{ id: string; display_name: string | null; avatar: string | null }[]> {
+  if (ids.length === 0) return [];
+  const withPhotos = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar")
+    .in("id", ids);
+  if (!withPhotos.error) return withPhotos.data ?? [];
+  const namesOnly = await supabase.from("profiles").select("id, display_name").in("id", ids);
+  return (namesOnly.data ?? []).map((p) => ({ ...p, avatar: null }));
 }

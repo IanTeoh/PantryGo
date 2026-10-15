@@ -39,8 +39,18 @@ export function coverColours(key: CoverKey): CoverColours {
   return (isDark ? DARK : LIGHT)[key] ?? LIGHT.sage;
 }
 
-// Up to 3 different drawings, from the ingredients in order
+// Up to 3 different drawings, from the ingredients in order. Kept per ingredient list
+// (WeakMap: forgotten by itself once that recipe is gone), so lists don't redo it.
+const iconsCache = new WeakMap<Ingredient[], FoodArtName[]>();
 export function coverIcons(ingredients: Ingredient[]): FoodArtName[] {
+  const cached = iconsCache.get(ingredients);
+  if (cached) return cached;
+  const icons = findIcons(ingredients);
+  iconsCache.set(ingredients, icons);
+  return icons;
+}
+
+function findIcons(ingredients: Ingredient[]): FoodArtName[] {
   const icons: FoodArtName[] = [];
   for (const ing of ingredients) {
     if (isStaple(ing)) continue;

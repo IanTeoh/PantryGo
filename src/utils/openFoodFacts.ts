@@ -12,7 +12,7 @@ export type ProductInfo = {
   name: string;
   brand: string | null;
   quantity: number | null; // pack size, e.g. 2
-  unit: string | null; // in PantryGo's units: "g", "kg", "ml", "L"
+  unit: string | null; // in PantryGo's units: "g" or "ml"
   nutrition: Nutrition | null; // per 100 g (or 100 ml for drinks), from the label
 };
 
@@ -84,13 +84,13 @@ function toPantryUnit(quantity: number, unit: string): { quantity: number; unit:
     case "g":
       return { quantity, unit: "g" };
     case "kg":
-      return { quantity, unit: "kg" };
+      return { quantity: quantity * 1000, unit: "g" }; // stored in g, shown as kg
     case "ml":
       return { quantity, unit: "ml" };
     case "cl":
       return { quantity: quantity * 10, unit: "ml" }; // 33 cl = 330 ml
     case "l":
-      return { quantity, unit: "L" };
+      return { quantity: quantity * 1000, unit: "ml" }; // stored in ml, shown as L
     default:
       return null;
   }

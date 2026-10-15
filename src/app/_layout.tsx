@@ -9,13 +9,15 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+import { LaunchSplash } from "@/components/LaunchSplash";
 import { SetNewPassword } from "@/components/SetNewPassword";
 import { AuthProvider, useAuth } from "@/state/AuthContext";
 import { BudgetProvider } from "@/state/BudgetContext";
 import { CommunityProvider } from "@/state/CommunityContext";
+import { FoodIconsProvider } from "@/state/FoodIconsContext";
 import { HouseholdProvider, useHousehold } from "@/state/HouseholdContext";
 import { NutritionProvider } from "@/state/NutritionContext";
 import { PantryProvider } from "@/state/PantryContext";
@@ -55,27 +57,30 @@ export default function RootLayout() {
           {/* The rest each need to know your household. The order matters where one
               uses another: putting shopping away records spending (Budget) and fills the
               pantry (Pantry); cooking a recipe uses the pantry and the shopping list. */}
-          <BudgetProvider>
-            <PantryProvider>
-              <ShoppingProvider>
-                <RecipesProvider>
-                  {/* Your private calorie log. Only needs useAuth(), not the household. */}
-                  {/* Recipes shared with everyone. Uses useRecipes(), so it goes inside. */}
-                  <CommunityProvider>
-                    <NutritionProvider>
-                      {/* Expiry reminders: plans notifications from every household */}
-                      <RemindersProvider>
-                        {/* Cuisines you like, and whether you've done the setup flow */}
-                        <PreferencesProvider>
-                          <RootNavigator />
-                        </PreferencesProvider>
-                      </RemindersProvider>
-                    </NutritionProvider>
-                  </CommunityProvider>
-                </RecipesProvider>
-              </ShoppingProvider>
-            </PantryProvider>
-          </BudgetProvider>
+          {/* FoodIconsProvider: drawings the household picked for foods */}
+          <FoodIconsProvider>
+            <BudgetProvider>
+              <PantryProvider>
+                <ShoppingProvider>
+                  <RecipesProvider>
+                    {/* Your private calorie log. Only needs useAuth(), not the household. */}
+                    {/* Recipes shared with everyone. Uses useRecipes(), so it goes inside. */}
+                    <CommunityProvider>
+                      <NutritionProvider>
+                        {/* Expiry reminders: plans notifications from every household */}
+                        <RemindersProvider>
+                          {/* Cuisines you like, and whether you've done the setup flow */}
+                          <PreferencesProvider>
+                            <RootNavigator />
+                          </PreferencesProvider>
+                        </RemindersProvider>
+                      </NutritionProvider>
+                    </CommunityProvider>
+                  </RecipesProvider>
+                </ShoppingProvider>
+              </PantryProvider>
+            </BudgetProvider>
+          </FoodIconsProvider>
         </HouseholdProvider>
       </AuthProvider>
     </GestureHandlerRootView>
@@ -94,23 +99,31 @@ function RootNavigator() {
   const loading = authLoading || (signedIn && (householdLoading || prefsLoading));
   const setUp = prefs.onboarded; // been through the setup flow (or skipped it)
 
-  // Hide the splash screen once we know whether you're signed in, and in a household.
-  useEffect(() => {
-    if (!loading) {
-      SplashScreen.hideAsync();
-    }
-  }, [loading]);
+  // The animated launch screen sits on top of everything (it hides the phone's
+  // own splash once it has drawn) and fades away once we know where to send you.
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {recovering ? (
+        // Opened from a password-reset email: choose a new password before anything else
+        <SetNewPassword />
+      ) : loading ? null : (
+        <Screens signedIn={signedIn} hasHousehold={hasHousehold} setUp={setUp} />
+      )}
+      <LaunchSplash ready={!loading || recovering} />
+    </View>
+  );
+}
 
-  // Opened from a password-reset email: choose a new password before anything else
-  if (recovering) {
-    SplashScreen.hideAsync();
-    return <SetNewPassword />;
-  }
-
-  if (loading) {
-    return null; // splash screen is still showing
-  }
-
+// All the app's screens, and which ones you can reach right now
+function Screens({
+  signedIn,
+  hasHousehold,
+  setUp,
+}: {
+  signedIn: boolean;
+  hasHousehold: boolean;
+  setUp: boolean;
+}) {
   return (
     <Stack
       screenOptions={{
@@ -152,6 +165,11 @@ function RootNavigator() {
         <Stack.Screen name="activity/[id]" options={{ presentation: "modal", title: "Change" }} />
         <Stack.Screen name="cook/[id]" options={{ presentation: "modal", title: "Cooked it" }} />
         <Stack.Screen name="account" options={{ presentation: "modal", title: "Profile" }} />
+        <Stack.Screen name="avatar" options={{ presentation: "modal", title: "Profile picture" }} />
+        <Stack.Screen
+          name="add-password"
+          options={{ presentation: "modal", title: "Email and password" }}
+        />
         <Stack.Screen name="legal/[doc]" options={{ title: "", headerBackTitle: "Back" }} />
         <Stack.Screen name="put-away" options={{ presentation: "modal", title: "Put away" }} />
         <Stack.Screen name="household/[id]" options={{ title: "", headerBackTitle: "Back" }} />
@@ -161,6 +179,10 @@ function RootNavigator() {
         />
         <Stack.Screen name="calories" options={{ title: "Calories", headerBackTitle: "Back" }} />
         <Stack.Screen name="food-add" options={{ presentation: "modal", title: "Add food" }} />
+        <Stack.Screen
+          name="food-icon"
+          options={{ presentation: "modal", title: "Choose a picture" }}
+        />
         <Stack.Screen
           name="nutrition-goals"
           options={{ presentation: "modal", title: "Daily goals" }}

@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { PressableScale } from "@/components/PressableScale";
@@ -6,12 +7,40 @@ import { PressableScale } from "@/components/PressableScale";
 import { RecipeCover } from "@/components/RecipeCover";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { estimateRecipeNutrition, formatMinutes, kcalLabel } from "@/utils/recipeMeta";
-import type { RecipeContent } from "@/utils/recipes";
+import type { Ingredient, RecipeContent } from "@/utils/recipes";
+
+// The calorie estimate matches every ingredient against the food list, which is slow
+// to redo for a screen of cards. Kept per ingredient list (and servings).
+const kcalCache = new WeakMap<Ingredient[], Map<number | null, string | null>>();
+function cardKcal(recipe: RecipeContent): string | null {
+  let bySize = kcalCache.get(recipe.ingredients);
+  if (!bySize) kcalCache.set(recipe.ingredients, (bySize = new Map()));
+  if (!bySize.has(recipe.servings)) {
+    bySize.set(
+      recipe.servings,
+      kcalLabel(estimateRecipeNutrition(recipe.ingredients, recipe.servings)),
+    );
+  }
+  return bySize.get(recipe.servings) ?? null;
+}
 
 // One recipe as a card: illustrated cover, title, time and calories, and a footer line.
 //   "grid": half the screen wide, in a 2-column grid
 //   "wide": a bigger card for horizontal rows ("Most saved")
-export function RecipeCard({
+// memo(): a card only redraws when what it shows changes. onPress is left out of the
+// comparison on purpose: screens make a new one each render, but it always opens
+// the same recipe.
+export const RecipeCard = memo(RecipeCardInner, (a, b) => {
+  return (
+    a.recipe === b.recipe &&
+    a.footer === b.footer &&
+    a.variant === b.variant &&
+    a.badge?.label === b.badge?.label &&
+    a.badge?.tone === b.badge?.tone
+  );
+});
+
+function RecipeCardInner({
   recipe,
   footer,
   badge,
@@ -19,12 +48,12 @@ export function RecipeCard({
   onPress,
 }: {
   recipe: RecipeContent;
-  footer?: string | null; // e.g. "by Ian · 12 saves" or "You have 5 of 7"
+  footer?: string | null; // e.g. "by Alex · 12 saves" or "You have 5 of 7"
   badge?: { label: string; tone: "good" | "plain" } | null; // a pill on the cover
   variant?: "grid" | "wide";
   onPress: () => void;
 }) {
-  const kcal = kcalLabel(estimateRecipeNutrition(recipe.ingredients, recipe.servings));
+  const kcal = cardKcal(recipe);
   const meta = [recipe.minutes ? formatMinutes(recipe.minutes) : null, kcal]
     .filter(Boolean)
     .join(" · ");

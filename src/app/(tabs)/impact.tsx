@@ -16,6 +16,7 @@ import { INSIGHT_MONTHS, useInsightsEvents } from "@/state/useInsightsEvents";
 import { colors, fonts, radius, spacing, tints } from "@/theme";
 import { balances, formatMoney, totalSpent } from "@/utils/budget";
 import { daysSinceWaste, formatPacks, monthKey, monthlyTotals, wasteRate } from "@/utils/impact";
+import { tick } from "@/utils/haptics";
 import { formatKcal, sumMacros } from "@/utils/nutrition";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -24,10 +25,11 @@ type IconName = ComponentProps<typeof Ionicons>["name"];
 // Kept simple on purpose: this month's headline, then one row each for the details.
 export default function InsightsScreen() {
   const { session } = useAuth();
-  const { household, members } = useHousehold();
+  const { household, members, setSpendingEnabled } = useHousehold();
   const { expenses } = useBudget();
   const { entries } = useNutrition();
-  const { prefs } = usePreferences();
+  const { prefs, savePrefs } = usePreferences();
+  const [turningOn, setTurningOn] = useState<string | null>(null);
   const { events, loading, reload } = useInsightsEvents();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(monthKey(Date.now()));
@@ -151,7 +153,91 @@ export default function InsightsScreen() {
           />
         )}
       </View>
+
+      {/* ---- Extras that are switched off: one tap to turn them on ---- */}
+      {(!prefs.trackCalories || (household && !spendingOn)) && (
+        <View style={{ gap: spacing.sm }}>
+          <Text style={styles.moreLabel}>MORE YOU CAN TRACK</Text>
+          <View style={styles.card}>
+            {!prefs.trackCalories && (
+              <Extra
+                icon="flame-outline"
+                tint="coral"
+                title="Calories"
+                sub="A private food diary with daily goals. Only you see it."
+                busy={turningOn === "calories"}
+                first
+                onTurnOn={async () => {
+                  setTurningOn("calories");
+                  await savePrefs({ trackCalories: true });
+                  setTurningOn(null);
+                }}
+              />
+            )}
+            {household && !spendingOn && (
+              <Extra
+                icon="wallet-outline"
+                tint="honey"
+                title="Spending"
+                sub={`Split grocery costs and see who owes whom. Turns it on for everyone in ${household.name}.`}
+                busy={turningOn === "spending"}
+                first={prefs.trackCalories}
+                onTurnOn={async () => {
+                  setTurningOn("spending");
+                  await setSpendingEnabled(household.id, true);
+                  setTurningOn(null);
+                }}
+              />
+            )}
+          </View>
+        </View>
+      )}
     </ScrollView>
+  );
+}
+
+// An extra that's off: what it is, and a "Turn on" button
+function Extra({
+  icon,
+  tint,
+  title,
+  sub,
+  busy,
+  first = false,
+  onTurnOn,
+}: {
+  icon: IconName;
+  tint: keyof typeof tints;
+  title: string;
+  sub: string;
+  busy: boolean;
+  first?: boolean;
+  onTurnOn: () => void;
+}) {
+  return (
+    <View style={[styles.row, !first && styles.divider]}>
+      <View style={[styles.rowIcon, { backgroundColor: tints[tint].bg }]}>
+        <Ionicons name={icon} size={20} color={tints[tint].icon} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.rowSub} numberOfLines={3}>
+          {sub}
+        </Text>
+      </View>
+      <Pressable
+        onPress={() => {
+          tick();
+          onTurnOn();
+        }}
+        disabled={busy}
+        style={({ pressed }) => [styles.turnOn, (pressed || busy) && { opacity: 0.6 }]}
+        accessibilityRole="button"
+        accessibilityLabel={`Turn on ${title}`}
+      >
+        <Text style={styles.turnOnText}>{busy ? "…" : "Turn on"}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -223,4 +309,18 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.text },
   rowSub: { fontFamily: fonts.body, fontSize: 13, color: colors.textSoft, marginTop: 1 },
+  moreLabel: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 12,
+    letterSpacing: 0.8,
+    color: colors.textSoft,
+    marginLeft: spacing.xs,
+  },
+  turnOn: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  turnOnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.primary },
 });

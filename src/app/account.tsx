@@ -3,32 +3,40 @@ import { reloadAppAsync } from "expo";
 import Constants from "expo-constants";
 import { router } from "expo-router";
 import type { ComponentProps, ReactNode } from "react";
-import { useState } from "react";
+import type { UserIdentity } from "@supabase/supabase-js";
+import * as AppleAuthentication from "expo-apple-authentication";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { Avatar } from "@/components/Avatar";
 import { TextInput } from "@/components/TextInput";
 
 import { FilterChips } from "@/components/FilterChips";
 import { PressableScale } from "@/components/PressableScale";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/state/AuthContext";
+import { useAuth, type SocialProvider } from "@/state/AuthContext";
 import { useCommunity } from "@/state/CommunityContext";
 import { CONTACT_EMAIL, hasContactEmail } from "@/data/legal";
 import { useHousehold } from "@/state/HouseholdContext";
 import { useNutrition } from "@/state/NutritionContext";
 import { usePreferences } from "@/state/PreferencesContext";
 import { useReminders } from "@/state/RemindersContext";
+import { setFoodPictures, useFoodPictures } from "@/utils/foodPictures";
 import { readItemView, saveItemView, type ItemView } from "@/utils/itemView";
 import { cuisineLabel } from "@/utils/recipeMeta";
 import { colors, fonts, radius, saveThemeChoice, spacing, themeChoice } from "@/theme";
 import { success, tick, warning } from "@/utils/haptics";
+import { isUploadedAvatar } from "@/utils/avatars";
+import { hasPassword, isHiddenAppleEmail, myAvatar, myName } from "@/utils/me";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -43,14 +51,15 @@ const TIME_OPTIONS = [7, 8, 9, 12, 18].map((h) => ({
   label: h === 12 ? "12pm" : h > 12 ? `${h - 12}pm` : `${h}am`,
 }));
 
-// Your profile and settings. Opened from your initial at the top of the tabs.
+// Your profile and settings. Opened from your picture at the top of the tabs.
 export default function ProfileScreen() {
   const { session, signOut } = useAuth();
   const { household, households, switchHousehold, refresh } = useHousehold();
   const reminders = useReminders();
 
   const user = session?.user;
-  const name = (user?.user_metadata?.display_name as string | undefined) || "You";
+  const name = myName(user) || "You";
+  const avatar = myAvatar(user);
 
   // ---- Editing your name ----
   const [editing, setEditing] = useState(false);
@@ -62,7 +71,7 @@ export default function ProfileScreen() {
     const clean = nameText.trim();
     if (!clean || !user) return;
     setSavingName(true);
-    // Two places: your sign-in details (for "Good morning, Ian") and your profile
+    // Two places: your sign-in details (for "Good morning, Sam") and your profile
     // (what flatmates see). The database lets you change only your own.
     const [a, b] = await Promise.all([
       supabase.auth.updateUser({ data: { display_name: clean } }),
@@ -103,6 +112,8 @@ export default function ProfileScreen() {
       return;
     }
     setDeleting(true);
+    // Your picture's file first: once the account's gone you can't remove it
+    if (isUploadedAvatar(avatar)) await supabase.storage.from("avatars").remove([avatar]);
     const { error } = await supabase.rpc("delete_my_account");
     setDeleting(false);
     if (error) {
@@ -127,9 +138,20 @@ export default function ProfileScreen() {
     >
       {/* ---- You ---- */}
       <View style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
-        </View>
+        <Pressable
+          onPress={() => {
+            tick();
+            router.push("/avatar");
+          }}
+          style={({ pressed }) => [styles.avatarWrap, pressed && { opacity: 0.8 }]}
+          accessibilityRole="button"
+          accessibilityLabel={avatar ? "Change profile picture" : "Add a profile picture"}
+        >
+          <Avatar name={name} photo={avatar} size={76} />
+          <View style={styles.avatarBadge}>
+            <Ionicons name="camera" size={14} color={colors.onPrimary} />
+          </View>
+        </Pressable>
         {editing ? (
           <View style={styles.nameEdit}>
             <TextInput
@@ -255,11 +277,16 @@ export default function ProfileScreen() {
                 style={[styles.settingRow, i > 0 && styles.divider]}
                 accessibilityRole="button"
               >
-                <View style={[styles.hhAvatar, current && styles.hhAvatarOn]}>
-                  <Text style={[styles.hhAvatarText, current && styles.hhAvatarTextOn]}>
-                    {h.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
+                <Avatar
+                  name={h.name}
+                  photo={h.photo}
+                  bucket="household-photos"
+                  shape="rounded"
+                  size={32}
+                  background={current ? colors.primary : colors.card}
+                  color={current ? colors.onPrimary : colors.primary}
+                  font={fonts.bodyBold}
+                />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowTitle}>{h.name}</Text>
                   <Text style={styles.rowSub}>
@@ -322,6 +349,8 @@ export default function ProfileScreen() {
         </View>
       </Section>
 
+      <SignInMethods />
+
       {/* ---- Account ---- */}
       <Section title="Account">
         <View style={styles.card}>
@@ -370,6 +399,152 @@ export default function ProfileScreen() {
 
 // ---- Small building blocks for this screen ----
 
+// The ways you can sign in to this account. Linking Apple or Google means any of
+// them opens this same account (with all your households and recipes).
+function SignInMethods() {
+  const { session, linkApple, linkGoogle, unlinkProvider } = useAuth();
+  const [identities, setIdentities] = useState<UserIdentity[] | null>(null);
+  const [appleHere, setAppleHere] = useState(false); // Sign in with Apple works on this phone
+  const [busy, setBusy] = useState<SocialProvider | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    const { data } = await supabase.auth.getUserIdentities();
+    if (data) setIdentities(data.identities);
+  }
+  useEffect(() => {
+    load();
+    if (Platform.OS === "ios") AppleAuthentication.isAvailableAsync().then(setAppleHere);
+  }, [session?.user.id, session?.user.updated_at]);
+
+  if (!identities) return null;
+  const find = (provider: string) => identities.find((i) => i.provider === provider);
+  const withPassword = hasPassword(session?.user) || !!find("email");
+  const accountEmail = session?.user.email ?? "";
+
+  async function link(provider: SocialProvider) {
+    tick();
+    setError(null);
+    setBusy(provider);
+    const message = provider === "apple" ? await linkApple() : await linkGoogle();
+    setBusy(null);
+    if (message) return setError(message);
+    await load();
+    success();
+  }
+
+  function unlink(provider: SocialProvider) {
+    const label = provider === "apple" ? "Apple" : "Google";
+    Alert.alert(
+      `Unlink ${label}?`,
+      `You won't be able to sign in to this account with ${label} any more. Your data stays.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unlink",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(provider);
+            const message = await unlinkProvider(provider);
+            setBusy(null);
+            if (message) return setError(message);
+            tick();
+            load();
+          },
+        },
+      ],
+    );
+  }
+
+  // "you@icloud.com", or "Hidden email" for Apple's private relay addresses
+  function shownEmail(identity: UserIdentity | undefined) {
+    const e = identity?.identity_data?.email as string | undefined;
+    if (!e) return "Linked";
+    return isHiddenAppleEmail(e) ? "Linked (email hidden)" : e;
+  }
+
+  const rows: {
+    provider: SocialProvider;
+    icon: IconName;
+    label: string;
+    canLink: boolean;
+    cantLinkWhy: string;
+  }[] = [
+    {
+      provider: "apple",
+      icon: "logo-apple",
+      label: "Apple",
+      canLink: appleHere,
+      cantLinkWhy: "Link it from an iPhone",
+    },
+    { provider: "google", icon: "logo-google", label: "Google", canLink: true, cantLinkWhy: "" },
+  ];
+
+  return (
+    <Section title="Sign-in methods">
+      <View style={styles.card}>
+        {/* Email and password: set it up (Apple / Google accounts) or change it */}
+        <View style={styles.settingRow}>
+          <RowIcon name="mail-outline" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>Email and password</Text>
+            <Text style={styles.rowSub} numberOfLines={1}>
+              {withPassword && !isHiddenAppleEmail(accountEmail) ? accountEmail : "Not set up"}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => {
+              tick();
+              router.push("/add-password");
+            }}
+            hitSlop={10}
+          >
+            <Text style={withPassword ? styles.linkSoft : styles.link}>
+              {withPassword ? "Change" : "Set up"}
+            </Text>
+          </Pressable>
+        </View>
+        {rows.map((row) => {
+          const linked = find(row.provider);
+          return (
+            <View key={row.provider} style={[styles.settingRow, styles.divider]}>
+              <RowIcon name={row.icon} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>{row.label}</Text>
+                <Text style={styles.rowSub} numberOfLines={1}>
+                  {linked ? shownEmail(linked) : row.canLink ? "Not linked" : row.cantLinkWhy}
+                </Text>
+              </View>
+              {busy === row.provider ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : linked ? (
+                identities.length > 1 && (
+                  <Pressable onPress={() => unlink(row.provider)} hitSlop={10}>
+                    <Text style={styles.linkSoft}>Unlink</Text>
+                  </Pressable>
+                )
+              ) : (
+                row.canLink && (
+                  <Pressable onPress={() => link(row.provider)} hitSlop={10} disabled={!!busy}>
+                    <Text style={styles.link}>Link</Text>
+                  </Pressable>
+                )
+              )}
+            </View>
+          );
+        })}
+      </View>
+      {error ? (
+        <Text style={[styles.error, { marginTop: spacing.sm }]}>{error}</Text>
+      ) : (
+        <Text style={styles.footnote}>
+          Any of these opens this same account, with all your households and recipes.
+        </Text>
+      )}
+    </Section>
+  );
+}
+
 function BlockedPeople() {
   const { blocked, unblock } = useCommunity();
   const [error, setError] = useState<string | null>(null);
@@ -404,12 +579,8 @@ function BlockedPeople() {
 // Extras: off unless you switch them on, so the app stays simple
 function Features() {
   const { prefs, savePrefs } = usePreferences();
-  const { household, setSpendingEnabled } = useHousehold();
-  const { session } = useAuth();
-  const [error, setError] = useState<string | null>(null);
-  const isOwner = household?.ownerId === session?.user.id;
-  const spendingOn = household?.spendingEnabled !== false;
   const [itemView, setItemView] = useState<ItemView>(readItemView);
+  const foodPictures = useFoodPictures();
 
   function toggleDark() {
     tick();
@@ -438,27 +609,22 @@ function Features() {
             }}
           />
         </View>
-        {household && (
-          <View style={[styles.settingRow, styles.divider]}>
-            <RowIcon name="wallet-outline" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>Split costs</Text>
-              <Text style={styles.rowSub}>
-                {isOwner
-                  ? `Track spending and who owes whom in ${household.name}.`
-                  : `${spendingOn ? "On" : "Off"} for ${household.name}. Only the owner can change it.`}
-              </Text>
-            </View>
-            <Toggle
-              on={spendingOn}
-              disabled={!isOwner}
-              onPress={async () => {
-                tick();
-                setError(await setSpendingEnabled(household.id, !spendingOn));
-              }}
-            />
+        <View style={[styles.settingRow, styles.divider]}>
+          <RowIcon name="image-outline" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>Food pictures</Text>
+            <Text style={styles.rowSub}>
+              A little drawing next to each food. Tap one on an item's page to change it.
+            </Text>
           </View>
-        )}
+          <Toggle
+            on={foodPictures}
+            onPress={() => {
+              tick();
+              setFoodPictures(!foodPictures);
+            }}
+          />
+        </View>
         <View style={[styles.settingRow, styles.divider]}>
           <RowIcon name="flask-outline" />
           <View style={{ flex: 1 }}>
@@ -486,7 +652,6 @@ function Features() {
           <Toggle on={themeChoice === "dark"} onPress={toggleDark} />
         </View>
       </View>
-      {error && <Text style={styles.hint}>{error}</Text>}
     </Section>
   );
 }
@@ -635,16 +800,20 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, gap: spacing.xl, paddingBottom: spacing.xl * 2 },
 
   profileCard: { alignItems: "center", gap: 4, paddingTop: spacing.sm },
-  avatar: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+  avatarWrap: { marginBottom: spacing.sm },
+  avatarBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.sm,
   },
-  avatarText: { fontFamily: fonts.heading, fontSize: 32, color: colors.onPrimary },
   name: { fontFamily: fonts.heading, fontSize: 24, color: colors.text },
   subtle: { fontFamily: fonts.body, fontSize: 14, color: colors.textSoft },
   nameEdit: { alignSelf: "stretch", gap: spacing.sm },
@@ -716,6 +885,13 @@ const styles = StyleSheet.create({
   noticeText: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.text },
   link: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.primary },
   linkSoft: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.textSoft },
+  footnote: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: colors.textSoft,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
   hint: { fontFamily: fonts.body, fontSize: 13, color: colors.textSoft },
   error: { fontFamily: fonts.body, fontSize: 12, color: colors.urgent, textAlign: "center" },
   smallButton: {
@@ -727,18 +903,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   smallButtonText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.onPrimary },
-
-  hhAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: colors.card,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hhAvatarOn: { backgroundColor: colors.primary },
-  hhAvatarText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.primary },
-  hhAvatarTextOn: { color: colors.onPrimary },
 
   toggle: { width: 48, height: 28, borderRadius: 14, backgroundColor: colors.border, padding: 3 },
   toggleOn: { backgroundColor: colors.primary },

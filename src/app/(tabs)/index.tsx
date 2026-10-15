@@ -9,6 +9,7 @@ import { CaloriesCard } from "@/components/CaloriesCard";
 import { HouseholdSwitcher } from "@/components/HouseholdSwitcher";
 import { PressableScale } from "@/components/PressableScale";
 import { FoodIcon } from "@/components/FoodIcon";
+import { useFoodPictures } from "@/utils/foodPictures";
 import { RecipeCover } from "@/components/RecipeCover";
 import { useAuth } from "@/state/AuthContext";
 import { useHousehold } from "@/state/HouseholdContext";
@@ -22,6 +23,7 @@ import type { Item } from "@/types";
 import type { Recipe } from "@/utils/recipes";
 import { daysUntil } from "@/utils/dates";
 import { suitsDiet } from "@/utils/recipeMeta";
+import { myName } from "@/utils/me";
 import { compareByExpiry, getFreshness } from "@/utils/freshness";
 import { checkIngredient, recipeReadiness } from "@/utils/recipes";
 
@@ -47,6 +49,7 @@ function soonSummary(items: Item[]): string {
 }
 
 export default function HomeScreen() {
+  const showPictures = useFoodPictures();
   const { session } = useAuth();
   const { household, members } = useHousehold();
   const { items, events, refresh, live } = usePantry();
@@ -56,7 +59,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [switching, setSwitching] = useState(false); // the household switcher is open
 
-  const firstName = ((session?.user.user_metadata?.display_name as string) || "").split(" ")[0];
+  const firstName = myName(session?.user).split(" ")[0];
   const today = new Date().toLocaleDateString("en-NZ", {
     weekday: "long",
     day: "numeric",
@@ -164,18 +167,20 @@ export default function HomeScreen() {
             onPress={() => router.push("/pantry")}
             style={styles.soonRow}
           >
-            <View style={styles.soonIcons}>
-              {useSoon.slice(0, 3).map((it, i) => (
-                <View key={it.id} style={[styles.soonIconWrap, i > 0 && { marginLeft: -10 }]}>
-                  <FoodIcon
-                    name={it.name}
-                    container={it.container}
-                    location={it.location}
-                    size={34}
-                  />
-                </View>
-              ))}
-            </View>
+            {showPictures && (
+              <View style={styles.soonIcons}>
+                {useSoon.slice(0, 3).map((it, i) => (
+                  <View key={it.id} style={[styles.soonIconWrap, i > 0 && { marginLeft: -10 }]}>
+                    <FoodIcon
+                      name={it.name}
+                      container={it.container}
+                      location={it.location}
+                      size={34}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
             <View style={{ flex: 1 }}>
               <Text style={styles.soonTitle}>{useSoon.length} to use soon</Text>
               <Text style={styles.soonText} numberOfLines={1}>

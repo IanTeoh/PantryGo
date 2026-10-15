@@ -12,7 +12,7 @@ import { usePreferences } from "@/state/PreferencesContext";
 import { colors, fonts, spacing } from "@/theme";
 import { warning } from "@/utils/haptics";
 
-// One of your household's recipes, e.g. /recipe/abc…
+// One of your recipes, e.g. /recipe/abc…
 export default function RecipeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { recipes, deleteRecipe } = useRecipes();

@@ -18,7 +18,7 @@ grant execute on function public.user_in_household(uuid, uuid) to authenticated;
 
 -- Money in and out of the household.
 --   purchase:   someone paid for something (a shop, toilet paper, the power bill)
---   settlement: one person paid another back ("Sam paid Ian $20")
+--   settlement: one person paid another back ("Sam paid Alex $20")
 create table public.expenses (
   id           uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
